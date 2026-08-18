@@ -204,6 +204,23 @@ export class OrdersService {
     return order;
   }
 
+  // Lets the table PWA (or a waiter re-opening a table) find the order a
+  // table is already mid-way through, so a second phone scanning the same
+  // table's QR appends to that order instead of starting a duplicate one.
+  async findActiveForTable(branchId: string, tableId: string): Promise<Order | null> {
+    const order = await this.orders.findOne({
+      where: [
+        { branchId, tableId, status: OrderStatus.OPEN },
+        { branchId, tableId, status: OrderStatus.IN_KITCHEN },
+        { branchId, tableId, status: OrderStatus.READY },
+        { branchId, tableId, status: OrderStatus.SERVED },
+      ],
+      relations: ['items', 'items.modifiers', 'items.kitchenStation', 'table'],
+      order: { createdAt: 'DESC' },
+    });
+    return order;
+  }
+
   private async getOrderOrThrow(id: string): Promise<Order> {
     const order = await this.orders.findOne({ where: { id } });
     if (!order) {

@@ -39,6 +39,16 @@ export class OrdersController {
     return this.ordersService.findAllForBranch(branchId, status);
   }
 
+  // Public: the table PWA calls this right after a scan to find out whether
+  // this table already has an order in progress (started by another guest's
+  // phone, or by a waiter) so it can join that order instead of starting a
+  // duplicate one. Registered before ':id' so "active-for-table" is never
+  // swallowed as an order id.
+  @Get('active-for-table')
+  findActiveForTable(@Query('branchId') branchId: string, @Query('tableId') tableId: string) {
+    return this.ordersService.findActiveForTable(branchId, tableId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
