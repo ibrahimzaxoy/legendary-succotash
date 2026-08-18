@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design system from project brief - dark kiosk variant */
+:root {
+  --color-primary: #ea580c;
+  --color-bg: #0b0b0d;
+  --color-text: #f5f5f4;
+  --color-success: #16a34a;
+  --color-cooking: #f59e0b;
+  --color-error: #dc2626;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Inter', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  user-select: none; /* kiosk screen - no accidental text selection on tap */
+}
+
+h1,
+h2,
+h3 {
+  font-family: 'Poppins', sans-serif;
+}
+
+@keyframes pulse-border {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+}
+.pulse-late {
+  animation: pulse-border 1.8s ease-in-out infinite;
+}

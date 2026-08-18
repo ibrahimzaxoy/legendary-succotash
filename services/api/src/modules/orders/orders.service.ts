@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderItemModifier } from './entities/order-item-modifier.entity';
 import { MenuItem } from '../menu/entities/menu-item.entity';
+import { RestaurantTable } from '../tables/entities/table.entity';
 import { CreateOrderDto, OrderItemInputDto } from './dto/create-order.dto';
 import { AddOrderItemsDto } from './dto/add-order-items.dto';
 import { OrderChannel, OrderItemStatus, OrderStatus } from '../../common/enums/order.enum';
@@ -29,6 +30,8 @@ export class OrdersService {
     private readonly orderItemModifiers: Repository<OrderItemModifier>,
     @InjectRepository(MenuItem)
     private readonly menuItems: Repository<MenuItem>,
+    @InjectRepository(RestaurantTable)
+    private readonly tables: Repository<RestaurantTable>,
     private readonly events: EventEmitter2,
   ) {}
 
@@ -71,6 +74,10 @@ export class OrdersService {
   }
 
   private async appendItems(order: Order, inputs: OrderItemInputDto[]): Promise<void> {
+    // Resolved once per call (not per item) so every ticket in this batch
+    // carries the table number the Kitchen Display shows on its cards.
+    const table = order.tableId ? await this.tables.findOne({ where: { id: order.tableId } }) : null;
+
     for (const input of inputs) {
       const menuItem = await this.menuItems.findOne({
         where: { id: input.menuItemId },
@@ -128,7 +135,7 @@ export class OrdersService {
         orderId: order.id,
         orderItemId: savedItem.id,
         channel: order.channel,
-        tableNumber: null,
+        tableNumber: table?.number ?? null,
         name: savedItem.nameSnapshot,
         quantity: savedItem.quantity,
         notes: savedItem.notes,
@@ -219,6 +226,22 @@ export class OrdersService {
       order: { createdAt: 'DESC' },
     });
     return order;
+  }
+
+  // What a Kitchen Display fetches once on load (or reconnect after a
+  // reboot) to repopulate its ticket rail before the WebSocket starts
+  // delivering new events - without this, a KDS that restarts mid-shift
+  // would show a blank screen until the next item is created.
+  async findActiveItemsForStation(branchId: string, stationId: string): Promise<OrderItem[]> {
+    return this.orderItems.find({
+      where: {
+        kitchenStationId: stationId,
+        status: In([OrderItemStatus.QUEUED, OrderItemStatus.COOKING]),
+        order: { branchId },
+      },
+      relations: ['order', 'order.table', 'modifiers'],
+      order: { createdAt: 'ASC' },
+    });
   }
 
   private async getOrderOrThrow(id: string): Promise<Order> {

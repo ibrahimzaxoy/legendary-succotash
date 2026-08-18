@@ -49,6 +49,14 @@ export class OrdersController {
     return this.ordersService.findActiveForTable(branchId, tableId);
   }
 
+  // What a Kitchen Display fetches once on load/reconnect to repopulate its
+  // ticket rail before new WebSocket events start arriving.
+  @UseGuards(JwtAuthGuard)
+  @Get('stations/:stationId/items')
+  findActiveItemsForStation(@Param('stationId') stationId: string, @Query('branchId') branchId: string) {
+    return this.ordersService.findActiveItemsForStation(branchId, stationId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
