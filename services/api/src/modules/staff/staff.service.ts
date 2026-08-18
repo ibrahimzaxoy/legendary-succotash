@@ -1,9 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Staff } from './entities/staff.entity';
 import { CreateStaffDto } from './dto/create-staff.dto';
+import { Role } from '../../common/enums/role.enum';
+
+// Shared tablets (waiter, cashier, kitchen, rider) authenticate with a PIN,
+// not email+password - see PIN_LOGIN_ROLES below.
+const PIN_LOGIN_ROLES = [Role.WAITER, Role.CASHIER, Role.KITCHEN, Role.RIDER];
+
+export interface StaffLoginOption {
+  id: string;
+  fullName: string;
+  role: Role;
+}
 
 @Injectable()
 export class StaffService {
@@ -31,6 +42,19 @@ export class StaffService {
 
   findAllForBranch(branchId: string): Promise<Staff[]> {
     return this.staffRepo.find({ where: { branchId } });
+  }
+
+  // Public-but-scoped: a shared device (Waiter POS, KDS) already knows its
+  // branchId from setup, and needs a "tap your name" picker before a PIN
+  // login - this reveals only name/role, never a secret, so it's safe to
+  // expose without requiring the staff member to already be authenticated
+  // (which would be circular - that's the whole point of logging in).
+  async findLoginOptionsForBranch(branchId: string): Promise<StaffLoginOption[]> {
+    const staff = await this.staffRepo.find({
+      where: { branchId, role: In(PIN_LOGIN_ROLES), active: true },
+      order: { fullName: 'ASC' },
+    });
+    return staff.map((s) => ({ id: s.id, fullName: s.fullName, role: s.role }));
   }
 
   async findOne(id: string): Promise<Staff> {

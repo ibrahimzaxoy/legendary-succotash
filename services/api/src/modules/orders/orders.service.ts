@@ -9,7 +9,7 @@ import { MenuItem } from '../menu/entities/menu-item.entity';
 import { RestaurantTable } from '../tables/entities/table.entity';
 import { CreateOrderDto, OrderItemInputDto } from './dto/create-order.dto';
 import { AddOrderItemsDto } from './dto/add-order-items.dto';
-import { OrderChannel, OrderItemStatus, OrderStatus } from '../../common/enums/order.enum';
+import { OrderChannel, OrderItemStatus, OrderStatus, TableStatus } from '../../common/enums/order.enum';
 import {
   ORDER_ITEM_CREATED,
   ORDER_ITEM_STATUS_UPDATED,
@@ -18,6 +18,9 @@ import {
 } from '../kitchen/kitchen.events';
 
 const ITEM_TERMINAL_STATUSES = [OrderItemStatus.READY, OrderItemStatus.SERVED, OrderItemStatus.CANCELLED];
+// An order is "on the floor" - still being cooked, served, or awaiting the
+// cashier - for exactly these statuses; CLOSED/CANCELLED/PAID are done.
+const ACTIVE_ORDER_STATUSES = [OrderStatus.OPEN, OrderStatus.IN_KITCHEN, OrderStatus.READY, OrderStatus.SERVED];
 
 @Injectable()
 export class OrdersService {
@@ -55,6 +58,12 @@ export class OrdersService {
     await this.appendItems(saved, dto.items);
     saved.status = OrderStatus.IN_KITCHEN;
     await this.recalcAndSave(saved);
+
+    // A table only ever becomes OCCUPIED because an order was opened on it -
+    // never set by hand (see SetTableStatusDto).
+    if (saved.tableId) {
+      await this.tables.update(saved.tableId, { status: TableStatus.OCCUPIED });
+    }
 
     return this.findOne(saved.id);
   }
@@ -215,17 +224,22 @@ export class OrdersService {
   // table is already mid-way through, so a second phone scanning the same
   // table's QR appends to that order instead of starting a duplicate one.
   async findActiveForTable(branchId: string, tableId: string): Promise<Order | null> {
-    const order = await this.orders.findOne({
-      where: [
-        { branchId, tableId, status: OrderStatus.OPEN },
-        { branchId, tableId, status: OrderStatus.IN_KITCHEN },
-        { branchId, tableId, status: OrderStatus.READY },
-        { branchId, tableId, status: OrderStatus.SERVED },
-      ],
+    return this.orders.findOne({
+      where: { branchId, tableId, status: In(ACTIVE_ORDER_STATUSES) },
       relations: ['items', 'items.modifiers', 'items.kitchenStation', 'table'],
       order: { createdAt: 'DESC' },
     });
-    return order;
+  }
+
+  // What the Waiter POS floor view fetches to know, per table, whether
+  // there's an order in progress and how far along it is - a single query
+  // instead of one per table.
+  findActiveForBranch(branchId: string): Promise<Order[]> {
+    return this.orders.find({
+      where: { branchId, status: In(ACTIVE_ORDER_STATUSES) },
+      relations: ['items', 'items.modifiers', 'items.kitchenStation', 'table'],
+      order: { createdAt: 'ASC' },
+    });
   }
 
   // What a Kitchen Display fetches once on load (or reconnect after a
@@ -260,6 +274,26 @@ export class OrdersService {
     order.status = OrderStatus.CLOSED;
     order.cashierStaffId = cashierStaffId;
     order.closedAt = new Date();
+    await this.orders.save(order);
+
+    // The table isn't immediately FREE for new guests - it needs bussing
+    // first. A waiter clears it to FREE from the floor view once that's done.
+    if (order.tableId) {
+      await this.tables.update(order.tableId, { status: TableStatus.NEEDS_CLEANING });
+    }
+
+    return this.findOne(id);
+  }
+
+  // The waiter's own action once they've physically brought the food to
+  // the table - distinct from the kitchen-driven READY status, and the
+  // signal the floor view uses to show "awaiting payment."
+  async markServed(id: string): Promise<Order> {
+    const order = await this.getOrderOrThrow(id);
+    if (order.status !== OrderStatus.READY) {
+      throw new BadRequestException(`Order must be ready before it can be marked served (currently ${order.status})`);
+    }
+    order.status = OrderStatus.SERVED;
     await this.orders.save(order);
     return this.findOne(id);
   }

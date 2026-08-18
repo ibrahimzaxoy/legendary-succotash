@@ -57,9 +57,26 @@ export class OrdersController {
     return this.ordersService.findActiveItemsForStation(branchId, stationId);
   }
 
+  // What the Waiter POS floor view loads on startup: every order still in
+  // progress across the branch, one query instead of one per table.
+  @UseGuards(JwtAuthGuard)
+  @Get('active')
+  findActiveForBranch(@Query('branchId') branchId: string) {
+    return this.ordersService.findActiveForBranch(branchId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
+  }
+
+  // The waiter's own signal that food has physically reached the table -
+  // distinct from the kitchen-driven READY status.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.WAITER, Role.MANAGER, Role.ADMIN, Role.OWNER)
+  @Patch(':id/serve')
+  markServed(@Param('id') id: string) {
+    return this.ordersService.markServed(id);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
