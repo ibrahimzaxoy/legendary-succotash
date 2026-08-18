@@ -51,6 +51,11 @@ export class Staff {
   @Column({ default: true })
   active: boolean;
 
+  // Rider self-service toggle - "on shift and available for dispatch" vs
+  // clocked off. Only meaningful for role = rider; other roles ignore it.
+  @Column({ default: false })
+  onShift: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

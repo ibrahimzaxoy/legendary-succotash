@@ -28,7 +28,7 @@ export function OrdersPage({ branchId }: { branchId: string }) {
   const load = () => {
     fetchActiveOrders(branchId).then(setOrders);
     fetchDeliveriesForBranch(branchId).then(setDeliveries);
-    fetchStaff(branchId).then((all) => setRiders(all.filter((s) => s.role === 'rider' && s.active)));
+    fetchStaff(branchId).then((all) => setRiders(all.filter((s) => s.role === 'rider' && s.active && s.onShift)));
   };
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export function OrdersPage({ branchId }: { branchId: string }) {
                         </select>
                       ) : (
                         <button onClick={() => setAssigning(order.id)} className="font-medium text-primary" disabled={riders.length === 0}>
-                          {riders.length === 0 ? 'No drivers on staff' : 'Assign driver'}
+                          {riders.length === 0 ? 'No drivers on shift' : 'Assign driver'}
                         </button>
                       )
                     ) : (

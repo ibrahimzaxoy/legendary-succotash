@@ -65,6 +65,11 @@ export class StaffService {
     return staff;
   }
 
+  async setOnShift(staffId: string, onShift: boolean): Promise<Staff> {
+    await this.staffRepo.update(staffId, { onShift });
+    return this.findOne(staffId);
+  }
+
   findByEmailWithSecrets(email: string): Promise<Staff | null> {
     return this.staffRepo
       .createQueryBuilder('staff')

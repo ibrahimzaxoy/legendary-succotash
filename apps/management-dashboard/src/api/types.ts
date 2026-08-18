@@ -36,6 +36,7 @@ export interface Staff {
   phone: string | null;
   role: Role;
   active: boolean;
+  onShift: boolean;
 }
 
 export type TableStatus = 'free' | 'occupied' | 'needs_cleaning' | 'reserved';
