@@ -17,13 +17,14 @@ export class BranchesController {
     return this.branchesService.create(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  // Public: the mobile app's location picker needs to list branches (name,
+  // address) before a customer has any reason to be authenticated - same
+  // reasoning as the menu endpoints already being public.
   @Get()
   findAll(@Query('restaurantId') restaurantId: string) {
     return this.branchesService.findAllForRestaurant(restaurantId);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.branchesService.findOne(id);

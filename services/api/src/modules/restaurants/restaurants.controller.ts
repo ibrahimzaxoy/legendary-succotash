@@ -23,7 +23,8 @@ export class RestaurantsController {
     return this.restaurantsService.findAll();
   }
 
-  @UseGuards(JwtAuthGuard)
+  // Public: the mobile app shows the restaurant's own name for branding
+  // before a customer has logged in (they never do, as a guest orderer).
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.restaurantsService.findOne(id);
