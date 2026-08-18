@@ -25,9 +25,9 @@ reported.
 | In-restaurant customer | Scans QR/barcode on table → mobile web (PWA, no install) | See table-specific menu, order & pay from their phone, split bill |
 | Waiter | Handheld/tablet POS app | Pick a table, build an order for guests who don't self-order, modify/merge orders, take payment |
 | Kitchen staff | Kitchen Display System (KDS) — wall-mounted tablets/TVs per station | See only the items relevant to their station (Pizza, Hookah, Grill, Bar, Cold/Salad, Dessert…), mark items in-progress/ready |
-| Cashier / Floor manager | POS / floor-view dashboard | See all open tables, order statuses, close checks, handle refunds |
-| Delivery rider | Rider app or third-party integration | Receive dispatch, update delivery status, proof of delivery |
-| Owner / Accountant | Admin web dashboard | Menu & pricing management, sales reports, reconciliation, payroll-adjacent tip reports, inventory/COGS |
+| Cashier | POS / floor-view screen | Receives payment for every dine-in check (cash/card at the counter or table-side terminal), closes checks, issues receipts, handles refunds |
+| Delivery rider (in-house) | Rider app | Receive dispatch, update delivery status, proof of delivery, own fleet — no third-party marketplace |
+| Owner / Manager / Accountant | Management Dashboard (web) | Cross-branch oversight: menu & pricing management, sales reports, reconciliation, staff performance, tip reports, inventory/COGS, branch comparison |
 
 ---
 
@@ -40,8 +40,8 @@ flowchart LR
         TQ[Table Web App<br/>QR/barcode, in-house]
         WP[Waiter POS<br/>tablet]
         KDS[Kitchen Display<br/>per station]
-        AD[Admin Dashboard]
-        RD[Rider App]
+        AD[Management Dashboard]
+        RD[Rider App<br/>in-house drivers]
     end
 
     subgraph Edge
@@ -62,7 +62,7 @@ flowchart LR
     end
 
     subgraph Data
-        PG[(PostgreSQL<br/>orders, menu, tables, users)]
+        PG[(MySQL<br/>orders, menu, tables, users)]
         REDIS[(Redis<br/>cache, pub/sub, sessions)]
         S3[(Object storage<br/>menu images, receipts)]
         MQ[(Message broker<br/>Kafka/RabbitMQ)]
@@ -108,15 +108,19 @@ independently without the Order Service knowing about all of them.
   (Socket.IO or native WS via NestJS Gateway)** for real-time order/KDS
   updates. GraphQL optional later for the admin dashboard's flexible
   querying needs — not required for v1.
-- **Database**: **PostgreSQL** as system of record (relational integrity
-  matters for orders, payments, accounting). **Redis** for caching, session
-  storage, rate limiting, and as the pub/sub layer for WebSocket fan-out
-  across multiple API instances.
+- **Database**: **MySQL 8** as system of record (relational integrity
+  matters for orders, payments, accounting; MySQL 8's window functions and
+  JSON columns cover reporting and flexible modifier-group storage). Every
+  table that stores branch-owned data carries a `branch_id` (and
+  `restaurant_id` at the top) so multi-branch is native, not bolted on.
+  **Redis** for caching, session storage, rate limiting, and as the pub/sub
+  layer for WebSocket fan-out across multiple API instances.
 - **Message broker**: **RabbitMQ** (simpler ops, sufficient throughput) or
   Kafka if you want durable event replay for analytics. Recommendation:
   start with **RabbitMQ**.
-- **Search** (menu search, reporting): Postgres full-text search is enough
-  for v1; add OpenSearch/Elasticsearch only if catalog grows large.
+- **Search** (menu search, reporting): MySQL full-text indexes are enough
+  for v1; add OpenSearch/Elasticsearch only if catalog grows large or you
+  need cross-branch analytical queries at scale.
 - **File/image storage**: S3-compatible object storage (AWS S3, or
   Cloudflare R2/MinIO if self-hosting) for menu photos, printed-receipt
   PDFs, ID/verification docs for riders.
@@ -135,18 +139,27 @@ independently without the Order Service knowing about all of them.
 - **Kitchen Display System**: Web app (Next.js/React) running full-screen
   on wall-mounted Android TV boxes or tablets, connected via WebSocket,
   designed for large-touch-target, high-contrast, always-on kiosk mode.
-- **Admin dashboard**: React (e.g., **Next.js** + a component library like
-  shadcn/ui) with charts (Recharts/Tremor) for sales & accounting views.
+- **Management Dashboard**: React (e.g., **Next.js** + a component library
+  like shadcn/ui) with charts (Recharts/Tremor). Owners/managers pick a
+  branch (or "all branches") from a switcher at the top of every screen —
+  menu & pricing, staff, live floor view, and sales/accounting reports all
+  filter by that selection, with a consolidated cross-branch view for the
+  owner role.
 
 ### Infra / Cross-cutting
 - **Auth**: JWT access + refresh tokens. Customers can order as guest
   (table/session-scoped token, no account needed) or with an account for
   order history/loyalty. Staff (waiter/kitchen/admin) use role-based auth
   (RBAC) tied to a PIN-code fast-login for shared tablets.
-- **Payments**: Stripe (or a local/regional PSP, e.g. supports the
-  restaurant's country — important since card networks vary by market) for
-  online card payments; cash/POS-terminal card handled by the waiter POS
-  marking "paid externally" while still reconciled in Accounting.
+- **Payments**: Stripe (or a local/regional PSP — important since card
+  networks vary by market) for online card payments placed through the
+  mobile app. For dine-in, **the cashier is the one who actually receives
+  the money** — a waiter can *build and send* an order, but "close the
+  check" (take cash, run a card terminal, apply a discount/comp, print the
+  receipt) is a cashier-role action on the POS, kept separate from the
+  waiter role for accountability. Every closed check produces a `Payment`
+  row tied to the cashier who took it, feeding straight into the
+  end-of-day cash-drawer reconciliation in Accounting.
 - **QR/Barcode**: Each table gets a persistent unique code
   (`https://order.restaurant.com/t/{tableId}?tk={signedToken}`) encoded as a
   QR (preferred over 1D barcode for URL capacity) printed as a table tent
@@ -315,10 +328,15 @@ closed` with `cancelled` and `refunded` as terminal/side states, plus
   SQLite/WatermelonDB cache) is recommended over a plain web app for this
   specific client.
 - Waiter app also handles: splitting/merging bills, applying discounts
-  (permission-gated), transferring a table's order to another table,
-  voiding items (with reason code, logged for accounting), and taking
-  payment (integrates with a card reader via Stripe Terminal or similar,
-  plus manual cash entry).
+  (permission-gated), transferring a table's order to another table, and
+  voiding items (with reason code, logged for accounting). When the table
+  is ready to pay, the waiter marks the check "ready to close," which
+  routes it to the **Cashier screen** — the waiter does not take money
+  directly; a staff member logged in with the Cashier role receives
+  payment (cash or card terminal) and formally closes the check. (A small
+  restaurant can have the same person hold both Waiter and Cashier roles
+  on their staff account — the role separation is about the audit trail,
+  not necessarily a different physical person.)
 
 ---
 
@@ -391,18 +409,26 @@ closed` with `cancelled` and `refunded` as terminal/side states, plus
 - Exportable to CSV/PDF and optionally integrable with external accounting
   software (QuickBooks/Xero) via API/CSV for the actual bookkeeping.
 
-### Delivery
-- Own `Delivery` record per order: address, geocoding, assigned rider,
+### Delivery — own fleet, no marketplace
+- All delivery is fulfilled by the restaurant's **own drivers** — no
+  third-party delivery marketplace integration. `Driver` is a staff record
+  (role = Rider) tied to a `branch_id`, with vehicle info and an
+  active/off-shift flag.
+- Own `Delivery` record per order: address, geocoding, assigned driver,
   status timeline (assigned → picked_up → en_route → delivered/failed),
   proof of delivery (photo/signature), delivery fee calculation
   (flat/zone/distance-based).
-- Either an in-house **Rider app** (same React Native shell, rider role)
-  with live GPS tracking shared to the customer's order-tracking screen, or
-  integration with third-party delivery providers (e.g., a regional
-  delivery API) via an adapter interface in the Delivery Service so both
-  can be supported without changing the Order Service.
-- Dispatch logic: simplest v1 is manual assignment by a dispatcher/manager;
-  v2 can add automatic nearest-rider assignment.
+- **Rider app** (React Native, driver role) shows the driver their assigned
+  deliveries, turn-by-turn hand-off to the phone's maps app, a "picked
+  up"/"delivered" action, and shares live GPS to the customer's
+  order-tracking screen over WebSocket.
+- Dispatch: v1 is manual assignment by a branch dispatcher/manager from the
+  Management Dashboard's live orders view (pick an available driver for a
+  ready delivery order); v2 can add automatic nearest-available-driver
+  assignment once there's enough driver location data to rank on.
+- Because it's multi-branch, dispatch and driver rosters are scoped per
+  branch — a driver only sees and is assigned deliveries from their own
+  branch.
 
 ---
 
@@ -462,8 +488,11 @@ build/test pipelines).
   RBAC for all staff actions with audit logging (who voided an item, who
   applied a discount); PCI-DSS scope minimized by using a compliant payment
   processor's hosted fields/SDK rather than handling raw card data.
-- **Multi-branch ready**: every table above scoped by `branch_id` even for
-  a single-location v1.
+- **Multi-branch from day one**: the business may run one branch or several
+  — every table above is scoped by `branch_id`, staff/roles/QR
+  tokens/drivers/kitchen stations are all per-branch, and the Management
+  Dashboard supports both a single-branch view and a cross-branch owner
+  view from the first release, not a later migration.
 - **Accessibility**: KDS high-contrast/large text; customer apps meet basic
   WCAG for menu browsing.
 - **Auditability**: financial and order-status transitions are append-only
@@ -475,8 +504,10 @@ build/test pipelines).
 ## 13. Phased Roadmap
 
 **Phase 0 — Foundations (weeks 1–2)**
-Repo scaffolding, auth/identity service, Postgres schema for
-Restaurant/Branch/Table/Staff/MenuItem, CI/CD pipeline.
+Repo scaffolding, auth/identity service (with Waiter/Cashier/Kitchen/
+Rider/Manager/Admin roles), MySQL schema for
+Restaurant/Branch/Table/Staff/MenuItem — every table `branch_id`-scoped
+from the start — CI/CD pipeline.
 
 **Phase 1 — Core ordering + KDS (weeks 3–6)**
 Menu service + admin CRUD for menu, Table service + QR generation, Table
@@ -505,16 +536,26 @@ integrations if desired.
 
 ---
 
-## 14. Open Decisions for the Business to Confirm
+## 14. Decisions
 
-1. Which payment processor is available/preferred in your country/region?
-2. Do you want your own delivery riders, a third-party delivery
-   marketplace, or both?
-3. Single location today, or should we actively plan/test multi-branch in
-   Phase 1 rather than retrofit later?
-4. Do dine-in guests pay via the app themselves, or does payment always go
-   through a waiter/cashier?
-5. Do you need offline **order-taking** capability for the whole
+Confirmed:
+- **Database**: MySQL.
+- **Delivery**: in-house drivers only, own rider app — no third-party
+  marketplace.
+- **Branches**: system supports one branch today and more later; built
+  multi-branch-native from Phase 0, not retrofitted.
+- **Dine-in payment**: cashier role always receives the money and closes
+  the check; waiters build/send orders but don't take payment themselves.
+- **Management Dashboard**: required, with per-branch and cross-branch
+  views for owners/managers.
+
+Still open — confirm when convenient, doesn't block starting the build:
+1. Which payment processor is available/preferred in your country/region
+   (for the mobile app's online payments)?
+2. Do dine-in QR-ordering guests get the option to pay directly from their
+   phone as well, or does every dine-in check always go through the
+   cashier?
+3. Do you need offline **order-taking** capability for the whole
    restaurant during internet outages (not just the waiter app), i.e. a
    local-network fallback mode?
 
