@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MenuCategory } from './entities/menu-category.entity';
@@ -8,6 +8,17 @@ import { ModifierGroup } from './entities/modifier-group.entity';
 import { ModifierOption } from './entities/modifier-option.entity';
 import { CreateMenuCategoryDto } from './dto/create-menu-category.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
+import { UpdateMenuCategoryDto } from './dto/update-menu-category.dto';
+import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
+
+// MySQL's FK violation error code when a delete is blocked by a
+// RESTRICT constraint (here: OrderItem.menuItemId referencing a menu item
+// that's already been ordered - history must stay intact).
+function isForeignKeyRestriction(err: unknown): boolean {
+  const code = (err as { code?: string; errno?: number } | undefined)?.code;
+  const errno = (err as { code?: string; errno?: number } | undefined)?.errno;
+  return code === 'ER_ROW_IS_REFERENCED_2' || errno === 1451;
+}
 
 @Injectable()
 export class MenuService {
@@ -30,6 +41,27 @@ export class MenuService {
 
   findCategoriesForBranch(branchId: string): Promise<MenuCategory[]> {
     return this.categories.find({ where: { branchId }, order: { sortOrder: 'ASC' } });
+  }
+
+  async updateCategory(id: string, dto: UpdateMenuCategoryDto): Promise<MenuCategory> {
+    const category = await this.categories.findOne({ where: { id } });
+    if (!category) throw new NotFoundException(`Menu category ${id} not found`);
+    Object.assign(category, dto);
+    return this.categories.save(category);
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    try {
+      const result = await this.categories.delete(id);
+      if (result.affected === 0) throw new NotFoundException(`Menu category ${id} not found`);
+    } catch (err) {
+      if (isForeignKeyRestriction(err)) {
+        throw new BadRequestException(
+          'Some items in this category have order history and can’t be deleted - mark them unavailable instead of deleting the category.',
+        );
+      }
+      throw err;
+    }
   }
 
   async createItem(dto: CreateMenuItemDto): Promise<MenuItem> {
@@ -90,6 +122,17 @@ export class MenuService {
     });
   }
 
+  // Unlike findItemsForBranch (which every ordering channel uses and which
+  // deliberately hides 86'd items), the Management Dashboard needs to see
+  // -and re-enable- unavailable items too.
+  findAllItemsForBranchAdmin(branchId: string): Promise<MenuItem[]> {
+    return this.items.find({
+      where: { branchId },
+      relations: ['variants', 'modifierGroups', 'modifierGroups.options', 'kitchenStation'],
+      order: { name: 'ASC' },
+    });
+  }
+
   async findItem(id: string): Promise<MenuItem> {
     const item = await this.items.findOne({
       where: { id },
@@ -105,5 +148,26 @@ export class MenuService {
     const item = await this.findItem(id);
     item.isAvailable = isAvailable;
     return this.items.save(item);
+  }
+
+  // Base fields only - variants/modifier groups are creation-time only for
+  // now (no endpoint edits their nested collections after the fact).
+  async updateItem(id: string, dto: UpdateMenuItemDto): Promise<MenuItem> {
+    const item = await this.findItem(id);
+    Object.assign(item, dto);
+    await this.items.save(item);
+    return this.findItem(id);
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    try {
+      const result = await this.items.delete(id);
+      if (result.affected === 0) throw new NotFoundException(`Menu item ${id} not found`);
+    } catch (err) {
+      if (isForeignKeyRestriction(err)) {
+        throw new BadRequestException('This item has order history and can’t be deleted - mark it unavailable instead.');
+      }
+      throw err;
+    }
   }
 }
