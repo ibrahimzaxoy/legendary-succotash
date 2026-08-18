@@ -1,0 +1,50 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: restaurant
+      MYSQL_USER: restaurant
+      MYSQL_PASSWORD: restaurant
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - '3306:3306'
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+  api:
+    build:
+      context: ./services/api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: restaurant
+      DB_PASSWORD: restaurant
+      DB_DATABASE: restaurant
+      DB_SYNC: 'true'
+      JWT_ACCESS_SECRET: dev-access-secret
+      JWT_REFRESH_SECRET: dev-refresh-secret
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./services/api:/app
+      - /app/node_modules
+
+volumes:
+  mysql-data:
