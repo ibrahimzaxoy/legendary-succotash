@@ -5,6 +5,7 @@ import type {
   AuthTokens,
   Branch,
   CashDrawerSession,
+  CustomerRetentionSummary,
   Delivery,
   Expense,
   ExpenseCategory,
@@ -12,6 +13,8 @@ import type {
   InventoryItem,
   InventoryUnit,
   KitchenStation,
+  LoyaltyAccount,
+  LoyaltyLedgerEntry,
   MenuCategory,
   MenuItem,
   Order,
@@ -22,6 +25,8 @@ import type {
   PaymentMethod,
   PrinterConfig,
   PrintJobLog,
+  PromoCode,
+  PromoDiscountType,
   PurchaseOrder,
   PurchaseOrderReceipt,
   RecipeIngredient,
@@ -31,10 +36,12 @@ import type {
   ShiftAssignment,
   ShiftTemplate,
   Staff,
+  StaffPerformanceSummary,
   Supplier,
   SupplierBalance,
   SupplierPayment,
   TableStatus,
+  TopItemRow,
 } from './types';
 
 // --- Auth ---
@@ -423,4 +430,58 @@ export function deletePrinter(id: string): Promise<void> {
 
 export function fetchPrintJobs(branchId: string): Promise<PrintJobLog[]> {
   return apiFetch(`/printer-configs/jobs?branchId=${branchId}`);
+}
+
+// --- Loyalty ---
+
+export function fetchLoyaltyAccounts(restaurantId: string, search?: string): Promise<LoyaltyAccount[]> {
+  return apiFetch(`/loyalty/accounts?restaurantId=${restaurantId}${search ? `&search=${encodeURIComponent(search)}` : ''}`);
+}
+
+export function fetchLoyaltyLedger(accountId: string): Promise<LoyaltyLedgerEntry[]> {
+  return apiFetch(`/loyalty/accounts/${accountId}/ledger`);
+}
+
+export function adjustLoyaltyPoints(accountId: string, points: number, note?: string): Promise<LoyaltyAccount> {
+  return apiFetch(`/loyalty/accounts/${accountId}/adjust`, { method: 'PATCH', body: JSON.stringify({ points, note }) });
+}
+
+// --- Promotions ---
+
+export function fetchPromoCodes(restaurantId: string): Promise<PromoCode[]> {
+  return apiFetch(`/promo-codes?restaurantId=${restaurantId}`);
+}
+
+export function createPromoCode(input: {
+  restaurantId: string;
+  code: string;
+  discountType: PromoDiscountType;
+  value: string;
+  minOrderAmount?: string;
+  usageLimit?: number;
+  expiresAt?: string;
+}): Promise<PromoCode> {
+  return apiFetch('/promo-codes', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function updatePromoCode(id: string, input: Partial<{ value: string; minOrderAmount: string; usageLimit: number; expiresAt: string; active: boolean }>): Promise<PromoCode> {
+  return apiFetch(`/promo-codes/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export function deletePromoCode(id: string): Promise<void> {
+  return apiFetch(`/promo-codes/${id}`, { method: 'DELETE' });
+}
+
+// --- Analytics ---
+
+export function fetchTopItems(branchId: string, from: string, to: string, limit = 10): Promise<TopItemRow[]> {
+  return apiFetch(`/analytics/top-items?branchId=${branchId}&from=${from}&to=${to}&limit=${limit}`);
+}
+
+export function fetchCustomerRetention(branchId: string, from: string, to: string): Promise<CustomerRetentionSummary> {
+  return apiFetch(`/analytics/customer-retention?branchId=${branchId}&from=${from}&to=${to}`);
+}
+
+export function fetchStaffPerformance(branchId: string, from: string, to: string): Promise<StaffPerformanceSummary> {
+  return apiFetch(`/analytics/staff-performance?branchId=${branchId}&from=${from}&to=${to}`);
 }

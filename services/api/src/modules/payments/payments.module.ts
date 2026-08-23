@@ -8,9 +8,16 @@ import { PaymentsController } from './payments.controller';
 import { OrdersModule } from '../orders/orders.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { PrintingModule } from '../printing/printing.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Payment, PaymentAllocation, CashDrawerSession]), OrdersModule, AccountingModule, PrintingModule],
+  imports: [
+    TypeOrmModule.forFeature([Payment, PaymentAllocation, CashDrawerSession]),
+    OrdersModule,
+    AccountingModule,
+    PrintingModule,
+    LoyaltyModule,
+  ],
   providers: [PaymentsService],
   controllers: [PaymentsController],
   exports: [PaymentsService],

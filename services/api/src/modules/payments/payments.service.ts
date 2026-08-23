@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Payment } from './entities/payment.entity';
@@ -12,10 +12,13 @@ import { PaymentStatus, PaymentMethod, LedgerEntryType, CashDrawerSessionStatus 
 import { OrdersService } from '../orders/orders.service';
 import { AccountingService } from '../accounting/accounting.service';
 import { PrintingService } from '../printing/printing.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import type { Order } from '../orders/entities/order.entity';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     @InjectRepository(Payment)
     private readonly payments: Repository<Payment>,
@@ -26,6 +29,7 @@ export class PaymentsService {
     private readonly ordersService: OrdersService,
     private readonly accountingService: AccountingService,
     private readonly printingService: PrintingService,
+    private readonly loyaltyService: LoyaltyService,
   ) {}
 
   // For dine-in this is only ever called with a cashierStaffId, resolved
@@ -43,6 +47,7 @@ export class PaymentsService {
     );
     await this.ordersService.closeOrder(order.id, cashierStaffId);
     void this.printingService.printReceiptForOrder(order, saved);
+    void this.finalizeOrderMoney(order, saved);
     return saved;
   }
 
@@ -66,7 +71,9 @@ export class PaymentsService {
       saved.push(await this.recordPayment(order, { method: dto.method, amount: amount.toFixed(2) }, cashierStaffId));
     }
     await this.ordersService.closeOrder(order.id, cashierStaffId);
-    void this.printingService.printReceiptForOrder(order, { method: dto.method, amount: order.total, tipAmount: '0' } as Payment);
+    const receiptPayment = { method: dto.method, amount: order.total, tipAmount: '0' } as Payment;
+    void this.printingService.printReceiptForOrder(order, receiptPayment);
+    void this.finalizeOrderMoney(order, receiptPayment);
     return saved;
   }
 
@@ -102,7 +109,9 @@ export class PaymentsService {
     }
 
     await this.ordersService.closeOrder(order.id, cashierStaffId);
-    void this.printingService.printReceiptForOrder(order, { method: dto.method, amount: order.total, tipAmount: '0' } as Payment);
+    const receiptPayment = { method: dto.method, amount: order.total, tipAmount: '0' } as Payment;
+    void this.printingService.printReceiptForOrder(order, receiptPayment);
+    void this.finalizeOrderMoney(order, receiptPayment);
     return saved;
   }
 
@@ -135,6 +144,27 @@ export class PaymentsService {
     ]);
 
     return saved;
+  }
+
+  // Called once per order (not once per split payment) right after
+  // closeOrder(), regardless of which of the three capture paths got there:
+  // posts the DISCOUNT ledger entry for whatever loyalty/promo discount
+  // OrdersService.createOrder() already resolved onto Order.discount (§22 -
+  // this activates a ledger entry type that has existed since the original
+  // Phase 4 design but had no writer until now), then credits loyalty
+  // points for the sale. Both are best-effort - a failure here must never
+  // undo a payment that already succeeded.
+  private async finalizeOrderMoney(order: Order, payment: Payment): Promise<void> {
+    try {
+      if (Number(order.discount) > 0) {
+        await this.accountingService.record(order.branchId, order.id, [
+          { type: LedgerEntryType.DISCOUNT, amount: order.discount, note: `order:${order.id}` },
+        ]);
+      }
+      await this.loyaltyService.earnPoints(order, payment);
+    } catch (err) {
+      this.logger.warn(`finalizeOrderMoney failed for order ${order.id}: ${(err as Error).message}`);
+    }
   }
 
   findAllForOrder(orderId: string): Promise<Payment[]> {

@@ -105,3 +105,15 @@ export interface OrderDto {
   items: OrderItemDto[];
   createdAt: string;
 }
+
+// --- Loyalty & promotions ---
+
+export interface LoyaltyPreview {
+  phone: string;
+  name: string | null;
+  pointsBalance: number;
+}
+
+export interface PromoPreview {
+  discountAmount: string;
+}

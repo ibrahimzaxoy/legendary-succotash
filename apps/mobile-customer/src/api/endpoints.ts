@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { Branch, MenuCategory, MenuItem, OrderChannel, OrderDto, OrderItemInput, Restaurant } from './types';
+import type { Branch, LoyaltyPreview, MenuCategory, MenuItem, OrderChannel, OrderDto, OrderItemInput, PromoPreview, Restaurant } from './types';
 
 export function fetchRestaurant(restaurantId: string): Promise<Restaurant> {
   return apiFetch(`/restaurants/${restaurantId}`);
@@ -23,6 +23,8 @@ export interface PlaceOrderInput {
   customerName: string;
   customerPhone: string;
   deliveryAddress?: string;
+  promoCode?: string;
+  redeemLoyaltyPoints?: number;
   items: OrderItemInput[];
 }
 
@@ -32,4 +34,12 @@ export function placeOrder(input: PlaceOrderInput): Promise<OrderDto> {
 
 export function fetchOrder(orderId: string): Promise<OrderDto> {
   return apiFetch(`/orders/${orderId}`);
+}
+
+export function lookupLoyalty(branchId: string, phone: string): Promise<LoyaltyPreview | null> {
+  return apiFetch(`/loyalty/accounts/lookup?branchId=${branchId}&phone=${encodeURIComponent(phone)}`);
+}
+
+export function validatePromoCode(branchId: string, code: string, subtotal: string): Promise<PromoPreview> {
+  return apiFetch('/promotions/validate', { method: 'POST', body: JSON.stringify({ branchId, code, subtotal }) });
 }

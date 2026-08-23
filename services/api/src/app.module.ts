@@ -22,6 +22,9 @@ import { PurchasingModule } from './modules/purchasing/purchasing.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PrintingModule } from './modules/printing/printing.module';
+import { LoyaltyModule } from './modules/loyalty/loyalty.module';
+import { PromotionsModule } from './modules/promotions/promotions.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -50,6 +53,9 @@ import { PrintingModule } from './modules/printing/printing.module';
     InventoryModule,
     NotificationsModule,
     PrintingModule,
+    LoyaltyModule,
+    PromotionsModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
 })

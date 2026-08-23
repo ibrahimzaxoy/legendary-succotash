@@ -6,6 +6,10 @@ import { LedgerEntryType } from '../../../common/enums/payment.enum';
 // Append-only. Financial history is never mutated or deleted - a correction
 // is a new offsetting entry, so this table is always an accurate audit trail.
 @Entity('ledger_entries')
+// Every read of this table filters branchId + a createdAt range (sales
+// summary, every Phase 9 analytics endpoint) - a lone branchId index left
+// each of those scanning every row ever recorded for the branch.
+@Index(['branchId', 'createdAt'])
 export class LedgerEntry {
   @PrimaryGeneratedColumn('uuid')
   id: string;

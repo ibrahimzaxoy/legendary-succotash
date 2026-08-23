@@ -9,9 +9,16 @@ import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { OrdersGateway } from './orders.gateway';
 import { PrintingModule } from '../printing/printing.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
+import { PromotionsModule } from '../promotions/promotions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Order, OrderItem, OrderItemModifier, MenuItem, RestaurantTable]), PrintingModule],
+  imports: [
+    TypeOrmModule.forFeature([Order, OrderItem, OrderItemModifier, MenuItem, RestaurantTable]),
+    PrintingModule,
+    LoyaltyModule,
+    PromotionsModule,
+  ],
   providers: [OrdersService, OrdersGateway],
   controllers: [OrdersController],
   exports: [OrdersService],

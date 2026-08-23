@@ -6,6 +6,9 @@ import { OrderChannel, OrderStatus } from '../../../common/enums/order.enum';
 import { OrderItem } from './order-item.entity';
 
 @Entity('orders')
+// Every date-range report (analytics, active-for-branch lookups) filters
+// branchId + createdAt together - see LedgerEntry's identical addition.
+@Index(['branchId', 'createdAt'])
 export class Order {
   @PrimaryGeneratedColumn('uuid')
   id: string;

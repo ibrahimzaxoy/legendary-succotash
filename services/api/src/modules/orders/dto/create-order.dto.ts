@@ -72,6 +72,18 @@ export class CreateOrderDto {
   @IsString()
   deliveryAddress?: string;
 
+  // Loyalty & promotions (§22) - resolved into Order.discount at
+  // creation time, before payment capture, and can both apply to the
+  // same order (they stack). redeemLoyaltyPoints requires customerPhone.
+  @IsOptional()
+  @IsString()
+  promoCode?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  redeemLoyaltyPoints?: number;
+
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

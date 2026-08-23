@@ -17,6 +17,8 @@ import {
   OrderItemCreatedEvent,
 } from '../kitchen/kitchen.events';
 import { PrintingService } from '../printing/printing.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { PromotionsService } from '../promotions/promotions.service';
 
 const ITEM_TERMINAL_STATUSES = [OrderItemStatus.READY, OrderItemStatus.SERVED, OrderItemStatus.CANCELLED];
 // An order is "on the floor" - still being cooked, served, or awaiting the
@@ -38,6 +40,8 @@ export class OrdersService {
     private readonly tables: Repository<RestaurantTable>,
     private readonly events: EventEmitter2,
     private readonly printingService: PrintingService,
+    private readonly loyaltyService: LoyaltyService,
+    private readonly promotionsService: PromotionsService,
   ) {}
 
   async createOrder(dto: CreateOrderDto): Promise<Order> {
@@ -56,6 +60,39 @@ export class OrdersService {
       status: OrderStatus.OPEN,
     });
     const saved = await this.orders.save(order);
+
+    // Loyalty redemption and a promo code both resolve into Order.discount
+    // here - deliberately *before* appendItems() below, which is what
+    // fires the ORDER_ITEM_CREATED events the Kitchen Display and printer
+    // react to. An invalid promo code or an insufficient points balance
+    // must fail the whole order before the kitchen has seen anything, not
+    // after - the alternative (validate after appendItems) would let a
+    // doomed order's items already reach the KDS. Both discounts stack
+    // (§22): estimateSubtotal() prices dto.items the same way appendItems()
+    // will, without persisting anything yet.
+    if (dto.promoCode || dto.redeemLoyaltyPoints) {
+      const subtotal = (await this.estimateSubtotal(dto.items)).toFixed(2);
+      let discount = 0;
+      if (dto.promoCode) {
+        const promo = await this.promotionsService.validateAndConsume(saved.branchId, dto.promoCode, subtotal);
+        discount += Number(promo.discountAmount);
+      }
+      if (dto.redeemLoyaltyPoints) {
+        if (!dto.customerPhone) {
+          throw new BadRequestException('customerPhone is required to redeem loyalty points');
+        }
+        const redemption = await this.loyaltyService.redeemPoints(saved.branchId, dto.customerPhone, dto.redeemLoyaltyPoints, saved.id);
+        discount += Number(redemption.discountAmount);
+      }
+      // A promo's own discount is already clamped to the subtotal
+      // (PromotionsService.computeDiscount), but the combined total isn't -
+      // redeeming more points than the order is worth must never push the
+      // total negative. The points are still spent even if this clamps
+      // away some of their value; preventing over-redemption in the first
+      // place is a client-side UX concern, not a backend invariant.
+      saved.discount = Math.min(discount, Number(subtotal)).toFixed(2);
+      await this.orders.save(saved);
+    }
 
     await this.appendItems(saved, dto.items);
     saved.status = OrderStatus.IN_KITCHEN;
@@ -200,13 +237,57 @@ export class OrdersService {
     }
   }
 
-  private async recalcAndSave(order: Order): Promise<void> {
-    const items = await this.orderItems.find({ where: { orderId: order.id }, relations: ['modifiers'] });
+  // Prices a not-yet-persisted set of item inputs the same way appendItems()
+  // resolves pricing for real - used only to validate a promo code/loyalty
+  // redemption against the order's subtotal *before* the order actually
+  // gets its items (and before the kitchen sees anything). The re-lookup in
+  // appendItems() right after is a small, deliberate redundancy: menu data
+  // can't meaningfully change within the same request, and duplicating a
+  // handful of read queries is far cheaper than the alternative of somehow
+  // sharing already-fetched-but-not-yet-persisted MenuItem objects across
+  // two differently-shaped code paths.
+  private async estimateSubtotal(inputs: OrderItemInputDto[]): Promise<number> {
+    let subtotal = 0;
+    for (const input of inputs) {
+      const menuItem = await this.menuItems.findOne({
+        where: { id: input.menuItemId },
+        relations: ['variants', 'modifierGroups', 'modifierGroups.options'],
+      });
+      if (!menuItem || !menuItem.isAvailable) {
+        throw new BadRequestException(`Menu item ${input.menuItemId} is not available`);
+      }
+
+      let unitPrice = Number(menuItem.basePrice);
+      if (input.menuItemVariantId) {
+        const variant = menuItem.variants.find((v) => v.id === input.menuItemVariantId);
+        if (!variant) throw new BadRequestException(`Variant ${input.menuItemVariantId} does not belong to menu item`);
+        unitPrice += Number(variant.priceDelta);
+      }
+      if (input.modifierOptionIds?.length) {
+        const allOptions = menuItem.modifierGroups.flatMap((g) => g.options);
+        for (const optionId of input.modifierOptionIds) {
+          const option = allOptions.find((o) => o.id === optionId);
+          if (!option) throw new BadRequestException(`Modifier option ${optionId} does not belong to menu item`);
+          unitPrice += Number(option.priceDelta);
+        }
+      }
+      subtotal += unitPrice * input.quantity;
+    }
+    return subtotal;
+  }
+
+  private async computeSubtotal(orderId: string): Promise<number> {
+    const items = await this.orderItems.find({ where: { orderId }, relations: ['modifiers'] });
     let subtotal = 0;
     for (const item of items) {
       const modifiersTotal = item.modifiers.reduce((sum, m) => sum + Number(m.priceSnapshot), 0);
       subtotal += (Number(item.priceSnapshot) + modifiersTotal) * item.quantity;
     }
+    return subtotal;
+  }
+
+  private async recalcAndSave(order: Order): Promise<void> {
+    const subtotal = await this.computeSubtotal(order.id);
     order.subtotal = subtotal.toFixed(2);
     order.total = (subtotal - Number(order.discount) + Number(order.tax)).toFixed(2);
     await this.orders.save(order);

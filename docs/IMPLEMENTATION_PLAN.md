@@ -39,7 +39,7 @@ records sales, tax, tips, and refunds.
 
 *A dedicated read-only **Accountant** role (financial reports only, no
 menu/staff edit rights) is a reasonable separation-of-duties addition once
-payroll/expenses/purchasing are live — tracked as an open decision in §22
+payroll/expenses/purchasing are live — tracked as an open decision in §23
 rather than added unilaterally, so as not to grow the role model further
 than the business actually needs.*
 
@@ -468,7 +468,7 @@ erDiagram
   `issuedAt`, `issuedByStaffId`, `remainingBalance`, `status`
   (`active`/`settled`). An advance/loan is issued outside payroll (a
   manager action, itself worth its own ledger visibility — see open
-  question in §22) and then deducted from future `PayrollLine`s until
+  question in §23) and then deducted from future `PayrollLine`s until
   `remainingBalance` reaches zero.
 - **`PayrollRun`** — `branchId`, `periodStart`, `periodEnd`, `status`
   (`draft`/`finalized`/`paid`), `generatedAt`, `generatedByStaffId`. A
@@ -526,7 +526,7 @@ an `EXPENSE` ledger entry immediately, with `loggedByStaffId` as the audit
 trail (exactly how `Payment.cashierStaffId` already works). A manager-
 approval-above-threshold workflow is a reasonable v2 addition once there's
 real usage data on what expense sizes actually warrant a second sign-off —
-flagged in §22 rather than built speculatively.
+flagged in §23 rather than built speculatively.
 
 ### Reporting
 Management Dashboard gets an Expenses tab (log/list/filter by category and
@@ -555,7 +555,7 @@ erDiagram
 
 - **`Supplier`** — scoped to `restaurantId`, **not** `branchId` (a produce
   vendor typically serves every branch of a chain under one account/terms —
-  see §22 for the case where a restaurant wants branch-specific suppliers
+  see §23 for the case where a restaurant wants branch-specific suppliers
   instead). `name`, `contactName`, `phone`, `email`, `address`,
   `paymentTermsDays` (e.g. net-30), `active`. `currentBalance` is exposed as
   a **computed** value (unpaid `PurchaseOrder` totals minus
@@ -843,7 +843,7 @@ erDiagram
   the `order:{id}`/`branch:{id}:floor` rooms already there) and sees
   `cart-item-added`/`cart-item-removed`/`guest-joined` events live. A guest
   can remove their own items by default (a sane social-norm default,
-  revisitable — see §22).
+  revisitable — see §23).
 - **Submission**: when any guest (or the table collectively) submits,
   every `SharedCartItem` for the session converts 1:1 into an `OrderItem`
   via the existing `appendItems` flow, carrying `guestId` forward into the
@@ -985,13 +985,139 @@ ticket within the same second; four guests at one table each add items
 from their own phones and see everyone else's live, then two of them pay
 for just their own items.*
 
-**Phase 9 — Hardening & scale** *(unchanged from original plan)*
-Load testing the real-time path, loyalty/promotions, analytics, third-party
-delivery marketplace integrations if desired.
+**Phase 9 — Loyalty, promotions, analytics & hardening**
+`loyalty` module (points earned on payment capture, redeemed as a discount
+at order time) and `promotions` module (restaurant-wide promo codes,
+validated at order time); deeper Reports analytics (top items, customer
+retention, staff performance); a concurrency-hardening pass over the
+real-time path informed by the actual race condition found and fixed in
+§18's `TableSessionsService.join()`. Third-party delivery marketplace
+integration is explicitly **not** part of this phase — it stands in direct
+conflict with the confirmed "in-house drivers only" decision (§23) and
+wasn't selected when this phase's scope was narrowed.
+→ *Milestone: a returning guest's phone number is recognized at checkout,
+their accumulated points knock a real discount off the total, a promo code
+does the same for a first-time guest, and the Reports page shows which
+menu items and which staff are actually driving revenue.*
 
 ---
 
-## 22. Decisions
+## 22. Phase 9: Loyalty, Promotions & Analytics
+
+### Loyalty
+
+New `loyalty` module. A "customer" still isn't a first-class account
+anywhere in this system (dine-in/mobile orders only ever carry
+`customerName`/`customerPhone` strings) — loyalty piggybacks on phone
+number as the identity, restaurant-wide (a guest's points follow them
+between branches, same reasoning as §23's confirmed supplier-roster
+scoping).
+
+```mermaid
+erDiagram
+    RESTAURANT ||--o{ LOYALTY_ACCOUNT : has
+    LOYALTY_ACCOUNT ||--o{ LOYALTY_LEDGER_ENTRY : accrues
+    ORDER ||--o| LOYALTY_LEDGER_ENTRY : "earns from"
+```
+
+- **`LoyaltyAccount`** — `restaurantId`, `phone` (unique per restaurant),
+  `name` (last name seen on an order, kept fresh), `pointsBalance`
+  (denormalized for fast lookup at checkout — always re-derivable by
+  summing `LoyaltyLedgerEntry.points`, same "cache, don't trust" posture as
+  `Supplier`'s balance being *computed* rather than stored would suggest,
+  except here the number is read on every single checkout so a stored,
+  transactionally-updated balance is worth the duplication).
+- **`LoyaltyLedgerEntry`** — append-only, mirrors the accounting ledger's
+  philosophy: `accountId`, `type` (`earned`/`redeemed`/`adjusted`),
+  `points` (signed), `orderId` nullable, `note`, `createdAt`.
+- **Earning**: `POINTS_PER_DOLLAR = 1` (1 point per $1 of order subtotal,
+  excluding tax/tip) — a plain constant for v1, not a per-restaurant
+  setting. Posted by `LoyaltyService.earnPoints()`, called directly from
+  `PaymentsService.capture()` / `captureSplitEven()` / `captureSplitByGuest()`
+  right after the receipt print call — same fire-and-forget-adjacent,
+  direct-DI-call pattern as printing (not a new event type, since this is
+  another "the module that owns the state change calls the module that
+  reacts to it" case like Purchasing → Inventory in §14). Never blocks
+  payment capture on failure (wrapped, logged, not rethrown).
+- **Redemption**: `POINT_REDEMPTION_VALUE = 0.05` ($0.05 off per point,
+  i.e. 100 points = $5). Resolved at **order-creation time**, not payment
+  time — `CreateOrderDto` gains an optional `redeemLoyaltyPoints: number`;
+  `OrdersService.createOrder()` validates the phone's balance covers it,
+  debits the points immediately (a `redeemed` ledger entry), and sets the
+  *existing, previously-unused* `Order.discount` column. This is the
+  simplest correct place for it: redemption has to happen before the total
+  used for payment capture is computed, and `Order.discount` already flows
+  into `recalcAndSave()`'s total formula (`subtotal − discount + tax`) —
+  it just never had a writer before this phase.
+  - **Known v1 gap, accepted**: if an order with redeemed points is later
+    cancelled, the points are not refunded — there is no cancellation
+    ledger-reversal flow anywhere in the system yet (refunds are already
+    documented as "not yet implemented" for cash-drawer reconciliation in
+    §15). Flagged as a §23 open decision, not silently ignored.
+
+### Promotions
+
+New `promotions` module, restaurant-wide like suppliers and loyalty.
+
+- **`PromoCode`** — `restaurantId`, `code` (unique per restaurant,
+  case-insensitive), `discountType` (`percentage`/`fixed_amount`),
+  `value`, `minOrderAmount` nullable, `usageLimit` nullable,
+  `usageCount` (incremented on each use), `expiresAt` nullable, `active`.
+- **Validation**: `PromotionsService.validate(restaurantId, code, subtotal)`
+  — checks active/not-expired/under-usage-limit/meets-minimum, returns the
+  discount amount or throws. Called from the same `createOrder()` path as
+  loyalty redemption; `CreateOrderDto` gains an optional `promoCode`
+  string. **A promo code and loyalty redemption can both apply to the same
+  order** — they stack, added together into one `Order.discount` value (no
+  product reason to forbid combining them in v1).
+- Every applied promo/redemption posts a `LedgerEntryType.DISCOUNT` entry
+  at payment-capture time (via `PaymentsService`, alongside the existing
+  `SALE`/`TIP` entries) — this is the same enum value that has existed
+  since the original Phase 4 ledger design but had no writer until now.
+
+### Analytics (Reports page additions)
+
+No new entities — pure read-side aggregation over `Order`/`OrderItem`/
+`Payment`/`Staff`, exposed from a new `AnalyticsController`
+(`GET /analytics/top-items`, `GET /analytics/customer-retention`,
+`GET /analytics/staff-performance`, each `branchId` + date-range scoped
+like the existing `GET /accounting/summary`):
+- **Top items**: `OrderItem` rows grouped by `nameSnapshot`, ranked by
+  revenue and by quantity, over the selected range.
+- **Customer retention**: `Order` rows grouped by `customerPhone`
+  (dine-in orders without one excluded) — new vs. repeat customer counts
+  and revenue split, the same phone-as-identity approach loyalty uses.
+- **Staff performance**: `Order`/`Payment` rows grouped by `waiterStaffId`
+  / `cashierStaffId` — order count and average order value per staff
+  member.
+
+### Hardening
+
+Not a new module — a review pass over the real-time path, directly
+motivated by the join-time race condition found and fixed during Phase 8
+verification (two guests scanning a table's QR within milliseconds could
+each create a separate `TableSession`, silently splitting their carts,
+until the find-or-create was moved inside a row-locked transaction). Two
+concrete actions, not an open-ended audit:
+1. **Composite indexes on every date-range-filtered hot path**:
+   `ledger_entries`, `orders`, and `payments` were all queried by
+   `branchId` + a `createdAt` range (accounting summary, active-orders
+   lookups, cash-drawer reconciliation, and now every analytics endpoint
+   above) but only had a single-column index on `branchId` — every such
+   query was scanning every row for the branch. Added `(branchId,
+   createdAt)` composite indexes to all three.
+2. **A concurrency smoke test**, not a production-scale load test (this
+   is a single sandboxed MySQL instance and API process — a genuine
+   load-test's numbers wouldn't mean anything beyond it). Fires a burst of
+   concurrent requests at the highest-risk shared-write paths (`POST
+   /table-sessions/join`, `POST /orders`) and confirms no duplicate
+   sessions, no lost writes, and no 500s under contention — the same
+   category of bug the Phase 8 race was, caught before it reaches a real
+   multi-guest table instead of after.
+
+---
+
+## 23. Decisions
 
 Confirmed (original, unchanged):
 - **Database**: MySQL.
@@ -1020,6 +1146,16 @@ Confirmed (this update):
 - **HR/purchasing/inventory administration reuses existing roles**
   (owner/admin/manager) — no new `Role` enum values added by this update.
 
+Confirmed (Phase 9):
+- **Loyalty and promotions key off phone number**, restaurant-wide, not a
+  new `Customer` account entity — consistent with how `customerPhone` was
+  already the only identity a dine-in/mobile order carries.
+- **Points and promo discounts stack** — a loyalty redemption and a promo
+  code can both apply to the same order, summed into one `Order.discount`.
+- **Third-party delivery marketplace integration is out of scope** for
+  this phase — it would directly reverse the confirmed in-house-drivers
+  decision above, and wasn't selected when Phase 9's scope was narrowed.
+
 Still open — confirm when convenient, doesn't block starting the build:
 1. *(carried over)* Which payment processor for the mobile app's online
    payments?
@@ -1045,8 +1181,11 @@ Still open — confirm when convenient, doesn't block starting the build:
    items" — e.g. should a designated "host" guest (the first to join) be
    able to remove anyone's item, for the common case of one person
    organizing the table?
+8. Redeemed loyalty points are not refunded if an order is later
+   cancelled (§22) — is that acceptable long-term, or does it need a
+   reversal flow once order cancellation itself is built out?
 
 ---
 
 *This document is the living specification for the build. Update it as
-decisions in §22 are made and as each phase is delivered.*
+decisions in §23 are made and as each phase is delivered.*

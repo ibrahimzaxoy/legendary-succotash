@@ -9,6 +9,9 @@ import { PaymentMethod, PaymentStatus } from '../../../common/enums/payment.enum
 // themselves. Online mobile-app payments instead go through the payment
 // gateway and cashierStaffId stays null.
 @Entity('payments')
+// closeCashDrawer() filters cashierStaffId + method + a createdAt range -
+// see LedgerEntry/Order's identical composite-index additions.
+@Index(['branchId', 'createdAt'])
 export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;

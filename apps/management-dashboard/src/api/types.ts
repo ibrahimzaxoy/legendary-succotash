@@ -431,3 +431,70 @@ export interface PrintJobLog {
   errorMessage: string | null;
   createdAt: string;
 }
+
+// --- Loyalty ---
+
+export type LoyaltyEntryType = 'earned' | 'redeemed' | 'adjusted';
+
+export interface LoyaltyAccount {
+  id: string;
+  restaurantId: string;
+  phone: string;
+  name: string | null;
+  pointsBalance: number;
+  createdAt: string;
+}
+
+export interface LoyaltyLedgerEntry {
+  id: string;
+  accountId: string;
+  type: LoyaltyEntryType;
+  points: number;
+  orderId: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+// --- Promotions ---
+
+export type PromoDiscountType = 'percentage' | 'fixed_amount';
+
+export interface PromoCode {
+  id: string;
+  restaurantId: string;
+  code: string;
+  discountType: PromoDiscountType;
+  value: string;
+  minOrderAmount: string | null;
+  usageLimit: number | null;
+  usageCount: number;
+  expiresAt: string | null;
+  active: boolean;
+}
+
+// --- Analytics ---
+
+export interface TopItemRow {
+  name: string;
+  quantity: number;
+  revenue: number;
+}
+
+export interface CustomerRetentionSummary {
+  newCustomers: number;
+  repeatCustomers: number;
+  newRevenue: number;
+  repeatRevenue: number;
+}
+
+export interface StaffPerformanceRow {
+  staffId: string;
+  fullName: string;
+  orderCount: number;
+  avgOrderValue: number;
+}
+
+export interface StaffPerformanceSummary {
+  waiters: StaffPerformanceRow[];
+  cashiers: StaffPerformanceRow[];
+}

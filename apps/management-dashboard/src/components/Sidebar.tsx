@@ -14,7 +14,8 @@ export type Tab =
   | 'suppliers'
   | 'cash'
   | 'inventory'
-  | 'printers';
+  | 'printers'
+  | 'promotions';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'reports', label: 'Reports' },
@@ -29,6 +30,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'inventory', label: 'Inventory' },
   { id: 'cash', label: 'Cash Sessions' },
   { id: 'printers', label: 'Printers' },
+  { id: 'promotions', label: 'Promotions' },
 ];
 
 export function Sidebar({

@@ -1,12 +1,17 @@
-import { useState } from 'react';
-import { placeOrder } from '../api/endpoints';
+import { useEffect, useState } from 'react';
+import { lookupLoyalty, placeOrder, validatePromoCode } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { cartLinesToOrderItemInputs, type CartLine } from '../utils/cart';
 import { addToHistory, loadGuestProfile, saveGuestProfile } from '../utils/storage';
 import { subscribeToOrderPush } from '../utils/push';
 import { Header } from '../components/Header';
 import { formatMoney } from '../utils/money';
-import type { Branch, OrderChannel } from '../api/types';
+import type { Branch, LoyaltyPreview, OrderChannel } from '../api/types';
+
+// $0.05 per point, mirrors LoyaltyService.POINT_REDEMPTION_VALUE on the
+// backend - used only to preview a discount amount here; the backend is
+// the source of truth and re-derives (and clamps) it independently.
+const POINT_REDEMPTION_VALUE = 0.05;
 
 export function Checkout({
   branch,
@@ -29,8 +34,56 @@ export function Checkout({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [loyalty, setLoyalty] = useState<LoyaltyPreview | null>(null);
+  const [redeemPoints, setRedeemPoints] = useState('');
+
+  const [promoInput, setPromoInput] = useState('');
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountAmount: string } | null>(null);
+  const [applyingPromo, setApplyingPromo] = useState(false);
+
   const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
   const canSubmit = name.trim().length > 0 && phone.trim().length > 0;
+
+  // Look up the loyalty balance once the phone number looks real - a
+  // returning guest sees their points before they've done anything else.
+  useEffect(() => {
+    const trimmed = phone.trim();
+    if (trimmed.length < 7) {
+      setLoyalty(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      lookupLoyalty(branch.id, trimmed)
+        .then((result) => !cancelled && setLoyalty(result))
+        .catch(() => !cancelled && setLoyalty(null));
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [branch.id, phone]);
+
+  const redeemablePoints = loyalty ? Math.min(loyalty.pointsBalance, Math.floor(subtotal / POINT_REDEMPTION_VALUE)) : 0;
+  const loyaltyDiscount = redeemPoints ? Math.min(Number(redeemPoints), redeemablePoints) * POINT_REDEMPTION_VALUE : 0;
+  const promoDiscount = appliedPromo ? Number(appliedPromo.discountAmount) : 0;
+  const total = Math.max(subtotal - loyaltyDiscount - promoDiscount, 0);
+
+  const applyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setApplyingPromo(true);
+    setPromoError(null);
+    try {
+      const preview = await validatePromoCode(branch.id, promoInput.trim(), subtotal.toFixed(2));
+      setAppliedPromo({ code: promoInput.trim(), discountAmount: preview.discountAmount });
+    } catch (err) {
+      setAppliedPromo(null);
+      setPromoError(err instanceof ApiError ? err.message : 'That promo code isn’t valid.');
+    } finally {
+      setApplyingPromo(false);
+    }
+  };
 
   const handlePlaceOrder = async () => {
     if (!canSubmit) return;
@@ -43,6 +96,8 @@ export function Checkout({
         customerName: name.trim(),
         customerPhone: phone.trim(),
         deliveryAddress,
+        promoCode: appliedPromo?.code,
+        redeemLoyaltyPoints: redeemPoints ? Math.min(Number(redeemPoints), redeemablePoints) : undefined,
         items: cartLinesToOrderItemInputs(lines),
       });
       saveGuestProfile({ name: name.trim(), phone: phone.trim(), address: deliveryAddress ?? profile.address });
@@ -86,6 +141,63 @@ export function Checkout({
           </div>
         )}
 
+        {loyalty && loyalty.pointsBalance > 0 && (
+          <div className="mt-5 rounded-lg border border-border bg-card p-3.5">
+            <p className="text-sm font-semibold">You have {loyalty.pointsBalance} points</p>
+            <p className="mb-2 text-xs text-muted">Worth up to {formatMoney(redeemablePoints * POINT_REDEMPTION_VALUE)} off this order.</p>
+            <div className="flex items-center gap-2">
+              <input
+                value={redeemPoints}
+                onChange={(e) => setRedeemPoints(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                inputMode="numeric"
+                className="w-20 rounded border border-border p-2 text-sm"
+              />
+              <span className="text-sm text-muted">points</span>
+              <button
+                onClick={() => setRedeemPoints(String(redeemablePoints))}
+                className="ml-auto text-sm font-medium text-primary"
+              >
+                Use max
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-5">
+          <label className="text-sm font-semibold">Promo code</label>
+          <div className="mt-1.5 flex gap-2">
+            <input
+              value={promoInput}
+              onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+              placeholder="e.g. WELCOME10"
+              disabled={!!appliedPromo}
+              className="flex-1 rounded-lg border border-border p-3 text-sm uppercase outline-primary disabled:bg-stone-50 disabled:text-muted"
+            />
+            {appliedPromo ? (
+              <button
+                onClick={() => {
+                  setAppliedPromo(null);
+                  setPromoInput('');
+                }}
+                className="rounded-lg border border-border px-4 text-sm font-semibold"
+              >
+                Remove
+              </button>
+            ) : (
+              <button
+                onClick={applyPromo}
+                disabled={applyingPromo || !promoInput.trim()}
+                className="rounded-lg bg-primary px-4 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {applyingPromo ? '…' : 'Apply'}
+              </button>
+            )}
+          </div>
+          {promoError && <p className="mt-1.5 text-sm text-error">{promoError}</p>}
+          {appliedPromo && <p className="mt-1.5 text-sm text-success">{appliedPromo.code} applied · −{formatMoney(promoDiscount)}</p>}
+        </div>
+
         <div className="mt-6">
           <h2 className="mb-2 font-heading text-lg font-semibold">Order summary</h2>
           {lines.map((line) => (
@@ -97,9 +209,25 @@ export function Checkout({
               <span>{formatMoney(line.unitPrice * line.quantity)}</span>
             </div>
           ))}
-          <div className="mt-2 flex justify-between border-t border-border pt-2 font-semibold">
+          <div className="mt-2 flex justify-between border-t border-border pt-2 text-sm">
             <span>Subtotal</span>
             <span>{formatMoney(subtotal)}</span>
+          </div>
+          {loyaltyDiscount > 0 && (
+            <div className="flex justify-between text-sm text-success">
+              <span>Loyalty points</span>
+              <span>−{formatMoney(loyaltyDiscount)}</span>
+            </div>
+          )}
+          {promoDiscount > 0 && (
+            <div className="flex justify-between text-sm text-success">
+              <span>Promo code</span>
+              <span>−{formatMoney(promoDiscount)}</span>
+            </div>
+          )}
+          <div className="mt-1 flex justify-between border-t border-border pt-2 font-semibold">
+            <span>Total</span>
+            <span>{formatMoney(total)}</span>
           </div>
         </div>
 
@@ -115,7 +243,7 @@ export function Checkout({
           disabled={!canSubmit || submitting}
           className="mt-6 w-full rounded-pill bg-primary py-3.5 font-semibold text-white disabled:opacity-40"
         >
-          {submitting ? 'Placing order…' : `Place order · ${formatMoney(subtotal)}`}
+          {submitting ? 'Placing order…' : `Place order · ${formatMoney(total)}`}
         </button>
       </div>
     </div>

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { fetchAccountingSummary, fetchCogs } from '../api/endpoints';
+import { fetchAccountingSummary, fetchCogs, fetchCustomerRetention, fetchStaffPerformance, fetchTopItems } from '../api/endpoints';
 import { StatTile } from '../components/StatTile';
 import { BarChart, type BarDatum } from '../components/BarChart';
 import { LoadingScreen } from '../components/LoadingScreen';
-import type { Branch } from '../api/types';
+import type { Branch, CustomerRetentionSummary, StaffPerformanceSummary, TopItemRow } from '../api/types';
 
 // Fixed categorical order (never cycled) - see the dataviz skill's color
 // formula. Only the ledger types actually present in the data get a bar.
@@ -40,6 +40,9 @@ export function ReportsPage({ branches, selectedBranchId }: { branches: Branch[]
   const [totalsByBranch, setTotalsByBranch] = useState<Record<string, Record<string, number>> | null>(null);
   const [cogs, setCogs] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [topItems, setTopItems] = useState<TopItemRow[] | null>(null);
+  const [retention, setRetention] = useState<CustomerRetentionSummary | null>(null);
+  const [staffPerf, setStaffPerf] = useState<StaffPerformanceSummary | null>(null);
 
   const targetBranches = selectedBranchId ? branches.filter((b) => b.id === selectedBranchId) : branches;
 
@@ -59,6 +62,26 @@ export function ReportsPage({ branches, selectedBranchId }: { branches: Branch[]
       .catch(() => setCogs(0)); // COGS is a bonus figure - don't fail the whole report if it can't load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranchId, from, to, branches.length]);
+
+  // Item/customer/staff analytics are single-branch queries server-side
+  // (see AnalyticsService) - shown only when one specific branch is
+  // selected rather than attempting a cross-branch merge (summing revenue
+  // is safe, as above, but re-ranking "top items" or re-averaging staff
+  // order values across branches needs real aggregation, not naive
+  // addition - out of scope for this pass).
+  useEffect(() => {
+    if (!selectedBranchId) {
+      setTopItems(null);
+      setRetention(null);
+      setStaffPerf(null);
+      return;
+    }
+    const fromIso = from;
+    const toIso = `${to}T23:59:59`;
+    fetchTopItems(selectedBranchId, fromIso, toIso, 8).then(setTopItems);
+    fetchCustomerRetention(selectedBranchId, fromIso, toIso).then(setRetention);
+    fetchStaffPerformance(selectedBranchId, fromIso, toIso).then(setStaffPerf);
+  }, [selectedBranchId, from, to]);
 
   if (error) return <div className="p-8 text-error">{error}</div>;
   if (!totalsByBranch || cogs === null) return <LoadingScreen label="Loading report…" />;
@@ -156,6 +179,61 @@ export function ReportsPage({ branches, selectedBranchId }: { branches: Branch[]
             </div>
           )}
         </div>
+      )}
+
+      {selectedBranchId ? (
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {topItems && topItems.length > 0 && (
+            <div className="rounded-lg border border-border bg-card p-5">
+              <h2 className="mb-4 font-heading text-base font-semibold">Top items by revenue</h2>
+              <BarChart data={topItems.map((i): BarDatum => ({ label: i.name, value: i.revenue, color: '#2a78d6' }))} formatValue={formatMoney} />
+            </div>
+          )}
+
+          {retention && (retention.newCustomers > 0 || retention.repeatCustomers > 0) && (
+            <div className="rounded-lg border border-border bg-card p-5">
+              <h2 className="mb-4 font-heading text-base font-semibold">Customer retention</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <StatTile label="New customers" value={String(retention.newCustomers)} />
+                <StatTile label="Repeat customers" value={String(retention.repeatCustomers)} />
+                <StatTile label="Revenue from new" value={formatMoney(retention.newRevenue)} />
+                <StatTile label="Revenue from repeat" value={formatMoney(retention.repeatRevenue)} />
+              </div>
+            </div>
+          )}
+
+          {staffPerf && staffPerf.waiters.length > 0 && (
+            <div className="rounded-lg border border-border bg-card p-5">
+              <h2 className="mb-4 font-heading text-base font-semibold">Orders taken by waiter</h2>
+              <BarChart data={staffPerf.waiters.map((s): BarDatum => ({ label: s.fullName, value: s.orderCount, color: '#2a78d6' }))} formatValue={(v) => String(Math.round(v))} />
+              <div className="mt-3 flex flex-col gap-1 text-xs text-muted">
+                {staffPerf.waiters.map((s) => (
+                  <div key={s.staffId} className="flex justify-between">
+                    <span>{s.fullName}</span>
+                    <span>avg {formatMoney(s.avgOrderValue)}/order</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {staffPerf && staffPerf.cashiers.length > 0 && (
+            <div className="rounded-lg border border-border bg-card p-5">
+              <h2 className="mb-4 font-heading text-base font-semibold">Checks closed by cashier</h2>
+              <BarChart data={staffPerf.cashiers.map((s): BarDatum => ({ label: s.fullName, value: s.orderCount, color: '#eb6834' }))} formatValue={(v) => String(Math.round(v))} />
+              <div className="mt-3 flex flex-col gap-1 text-xs text-muted">
+                {staffPerf.cashiers.map((s) => (
+                  <div key={s.staffId} className="flex justify-between">
+                    <span>{s.fullName}</span>
+                    <span>avg {formatMoney(s.avgOrderValue)}/check</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="mt-6 text-sm text-muted">Select a specific branch to see item, staff, and customer analytics.</p>
       )}
     </div>
   );
