@@ -10,6 +10,16 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // A hand-written service worker (src/sw.ts) instead of the default
+      // generated one - needed to add a `push` event handler for order-
+      // status notifications. precacheAndRoute keeps the same app-shell
+      // offline caching the generated worker used to provide; there's no
+      // navigation-fallback route here, so there's nothing that could ever
+      // serve stale API data - the "never cache API calls" concern the old
+      // config's navigateFallbackDenylist addressed doesn't apply anymore.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'Table Order',
@@ -24,9 +34,8 @@ export default defineConfig({
           { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        // Never cache API/WebSocket calls - menu/order data must always be fresh.
-        navigateFallbackDenylist: [/^\/(orders|menu|tables|auth)\//],
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg}'],
       },
     }),
   ],

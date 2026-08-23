@@ -358,6 +358,33 @@ export interface SupplierPayment {
   paidAt: string;
 }
 
+// --- Inventory ---
+
+export type InventoryUnit = 'kg' | 'g' | 'l' | 'ml' | 'each';
+
+export interface InventoryItem {
+  id: string;
+  branchId: string;
+  name: string;
+  unit: InventoryUnit;
+  currentStock: string;
+  reorderThreshold: string;
+  reorderQuantity: string;
+  averageUnitCost: string;
+  active: boolean;
+}
+
+export type InventoryAdjustmentReason = 'purchase_receipt' | 'order_deduction' | 'waste' | 'manual_correction' | 'stocktake';
+
+export interface RecipeIngredient {
+  id: string;
+  menuItemId: string;
+  menuItemVariantId: string | null;
+  inventoryItemId: string;
+  inventoryItem: InventoryItem;
+  quantityRequired: string;
+}
+
 // --- Cash drawer ---
 
 export type CashDrawerSessionStatus = 'open' | 'closed';

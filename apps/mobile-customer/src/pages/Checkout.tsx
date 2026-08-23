@@ -3,6 +3,7 @@ import { placeOrder } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { cartLinesToOrderItemInputs, type CartLine } from '../utils/cart';
 import { addToHistory, loadGuestProfile, saveGuestProfile } from '../utils/storage';
+import { subscribeToOrderPush } from '../utils/push';
 import { Header } from '../components/Header';
 import { formatMoney } from '../utils/money';
 import type { Branch, OrderChannel } from '../api/types';
@@ -47,6 +48,7 @@ export function Checkout({
       saveGuestProfile({ name: name.trim(), phone: phone.trim(), address: deliveryAddress ?? profile.address });
       addToHistory({ orderId: order.id, branchName: branch.name, channel, placedAt: order.createdAt });
       onPlaced(order.id);
+      void subscribeToOrderPush(order.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Couldn’t place your order - check your connection and try again.');
     } finally {

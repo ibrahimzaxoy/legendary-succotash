@@ -15,6 +15,13 @@ export class PurchaseOrderItemInputDto {
 
   @IsNumberString()
   unitCost: string;
+
+  // Optional link to an Inventory ingredient - when set, receiving this
+  // line also updates that ingredient's stock/cost (see InventoryModule).
+  // Left unlinked, the line is still a valid free-text purchase record.
+  @IsOptional()
+  @IsUUID()
+  inventoryItemId?: string;
 }
 
 export class CreatePurchaseOrderDto {

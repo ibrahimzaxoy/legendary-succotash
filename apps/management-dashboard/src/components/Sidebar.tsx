@@ -2,7 +2,7 @@ import { setSession } from '../state/store';
 import { setSelectedBranchId } from '../state/store';
 import type { Branch, Restaurant, StaffSummary } from '../api/types';
 
-export type Tab = 'reports' | 'menu' | 'tables' | 'staff' | 'orders' | 'shifts' | 'payroll' | 'expenses' | 'suppliers' | 'cash';
+export type Tab = 'reports' | 'menu' | 'tables' | 'staff' | 'orders' | 'shifts' | 'payroll' | 'expenses' | 'suppliers' | 'cash' | 'inventory';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'reports', label: 'Reports' },
@@ -14,6 +14,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'payroll', label: 'Payroll' },
   { id: 'expenses', label: 'Expenses' },
   { id: 'suppliers', label: 'Suppliers' },
+  { id: 'inventory', label: 'Inventory' },
   { id: 'cash', label: 'Cash Sessions' },
 ];
 

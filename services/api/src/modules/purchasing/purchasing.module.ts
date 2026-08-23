@@ -9,11 +9,13 @@ import { SupplierPayment } from './entities/supplier-payment.entity';
 import { PurchasingService } from './purchasing.service';
 import { PurchasingController } from './purchasing.controller';
 import { AccountingModule } from '../accounting/accounting.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Supplier, PurchaseOrder, PurchaseOrderItem, PurchaseOrderReceipt, PurchaseOrderReceiptLine, SupplierPayment]),
     AccountingModule,
+    InventoryModule,
   ],
   providers: [PurchasingService],
   controllers: [PurchasingController],

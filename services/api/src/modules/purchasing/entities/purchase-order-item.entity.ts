@@ -1,10 +1,10 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { PurchaseOrder } from './purchase-order.entity';
+import { InventoryItem } from '../../inventory/entities/inventory-item.entity';
 
-// No inventoryItemId FK yet - the Inventory module (recipe/COGS tracking)
-// is a later phase; itemName is a free-text description for now and will
-// gain an optional inventoryItemId link when that phase lands, without
-// needing to touch existing rows (they'll simply have no link).
+// itemName stays the source of truth for what was ordered (free text, no
+// FK required) - inventoryItemId is an optional link that, when set,
+// makes receiving this line also update that ingredient's stock/cost.
 @Entity('purchase_order_items')
 export class PurchaseOrderItem {
   @PrimaryGeneratedColumn('uuid')
@@ -35,4 +35,11 @@ export class PurchaseOrderItem {
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   lineTotal: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  inventoryItemId: string | null;
+
+  @ManyToOne(() => InventoryItem, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'inventoryItemId' })
+  inventoryItem: InventoryItem | null;
 }

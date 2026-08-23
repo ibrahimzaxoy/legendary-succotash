@@ -12,6 +12,7 @@ import { ErrorScreen } from '../components/ErrorScreen';
 import { MenuBrowser } from '../components/MenuBrowser';
 import { CartDrawer } from '../components/CartDrawer';
 import { OrderStatusView } from '../components/OrderStatusView';
+import { subscribeToOrderPush } from '../utils/push';
 
 export function TableEntry() {
   const { tableId } = useParams();
@@ -65,6 +66,7 @@ function TableOrderingFlow({ branchId, tableId, tableNumber }: { branchId: strin
     cart.clear();
     setShowCart(false);
     setView('status');
+    void subscribeToOrderPush(order.id);
   };
 
   const itemCount = cart.itemCount;

@@ -14,6 +14,7 @@ import { RecordSupplierPaymentDto } from './dto/record-supplier-payment.dto';
 import { PurchaseOrderStatus } from '../../common/enums/purchasing.enum';
 import { LedgerEntryType } from '../../common/enums/payment.enum';
 import { AccountingService } from '../accounting/accounting.service';
+import { InventoryService } from '../inventory/inventory.service';
 
 const OWED_STATUSES = [PurchaseOrderStatus.ORDERED, PurchaseOrderStatus.PARTIALLY_RECEIVED, PurchaseOrderStatus.RECEIVED];
 
@@ -33,6 +34,7 @@ export class PurchasingService {
     @InjectRepository(SupplierPayment)
     private readonly supplierPayments: Repository<SupplierPayment>,
     private readonly accountingService: AccountingService,
+    private readonly inventoryService: InventoryService,
   ) {}
 
   // --- Suppliers ---
@@ -83,6 +85,7 @@ export class PurchasingService {
           quantityOrdered: item.quantityOrdered,
           unitCost: item.unitCost,
           lineTotal: (Number(item.quantityOrdered) * Number(item.unitCost)).toFixed(2),
+          inventoryItemId: item.inventoryItemId ?? null,
         }),
       ),
     });
@@ -127,11 +130,9 @@ export class PurchasingService {
   }
 
   // Receiving atomically: logs the receipt event, bumps each line item's
-  // quantityReceived, and rolls the PO's own status up to
-  // partially_received/received based on the new totals. This is also
-  // where inventory stock levels will be incremented once the Inventory
-  // module (a later phase) exists - the receipt-line event is already the
-  // right hook point for that, no schema change needed then.
+  // quantityReceived, rolls the PO's own status up to partially_received/
+  // received based on the new totals, and - for any line linked to a real
+  // InventoryItem - updates that ingredient's stock and weighted-average cost.
   async receive(purchaseOrderId: string, dto: ReceivePurchaseOrderDto, receivedByStaffId: string): Promise<PurchaseOrderReceipt> {
     const po = await this.findPurchaseOrder(purchaseOrderId);
     if (![PurchaseOrderStatus.ORDERED, PurchaseOrderStatus.PARTIALLY_RECEIVED].includes(po.status)) {
@@ -165,6 +166,13 @@ export class PurchasingService {
         ),
       }),
     );
+
+    for (const line of dto.lines) {
+      const item = itemsById.get(line.purchaseOrderItemId)!;
+      if (item.inventoryItemId) {
+        await this.inventoryService.receivePurchaseLine(item.inventoryItemId, line.quantityReceived, item.unitCost, receipt.id);
+      }
+    }
 
     const allReceived = po.items.every((item) => Number(item.quantityReceived) >= Number(item.quantityOrdered));
     const anyReceived = po.items.some((item) => Number(item.quantityReceived) > 0);

@@ -17,6 +17,7 @@ export interface DeliveryAssignedEvent {
 export interface DeliveryStatusUpdatedEvent {
   deliveryId: string;
   branchId: string;
+  orderId: string;
   driverStaffId: string | null;
   status: DeliveryStatus;
 }

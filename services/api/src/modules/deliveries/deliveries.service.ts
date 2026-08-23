@@ -56,6 +56,7 @@ export class DeliveriesService {
     this.events.emit(DELIVERY_STATUS_UPDATED, {
       deliveryId: saved.id,
       branchId: saved.branchId,
+      orderId: saved.orderId,
       driverStaffId: saved.driverStaffId,
       status: saved.status,
     });

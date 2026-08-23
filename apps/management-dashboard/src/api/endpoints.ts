@@ -8,6 +8,9 @@ import type {
   Delivery,
   Expense,
   ExpenseCategory,
+  InventoryAdjustmentReason,
+  InventoryItem,
+  InventoryUnit,
   KitchenStation,
   MenuCategory,
   MenuItem,
@@ -19,6 +22,7 @@ import type {
   PaymentMethod,
   PurchaseOrder,
   PurchaseOrderReceipt,
+  RecipeIngredient,
   Restaurant,
   RestaurantTable,
   Role,
@@ -344,4 +348,48 @@ export function recordSupplierPayment(input: { branchId: string; supplierId: str
 // --- Cash drawer ---
 export function fetchCashDrawerSessions(branchId: string): Promise<CashDrawerSession[]> {
   return apiFetch(`/payments/cash-drawer-sessions?branchId=${branchId}`);
+}
+
+// --- Inventory ---
+export function fetchInventoryItems(branchId: string): Promise<InventoryItem[]> {
+  return apiFetch(`/inventory-items?branchId=${branchId}`);
+}
+
+export function fetchLowStockItems(branchId: string): Promise<InventoryItem[]> {
+  return apiFetch(`/inventory-items/low-stock?branchId=${branchId}`);
+}
+
+export function fetchCogs(branchId: string, from: string, to: string): Promise<{ amount: number }> {
+  return apiFetch(`/inventory-items/cogs?branchId=${branchId}&from=${from}&to=${to}`);
+}
+
+export function createInventoryItem(input: {
+  branchId: string;
+  name: string;
+  unit: InventoryUnit;
+  currentStock?: string;
+  reorderThreshold?: string;
+  reorderQuantity?: string;
+}): Promise<InventoryItem> {
+  return apiFetch('/inventory-items', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function updateInventoryItem(id: string, input: { name?: string; reorderThreshold?: string; reorderQuantity?: string; active?: boolean }): Promise<InventoryItem> {
+  return apiFetch(`/inventory-items/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export function adjustInventoryStock(id: string, input: { quantityDelta: string; reason: InventoryAdjustmentReason; note?: string }): Promise<void> {
+  return apiFetch(`/inventory-items/${id}/adjust`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function setRecipeIngredient(input: { menuItemId: string; menuItemVariantId?: string; inventoryItemId: string; quantityRequired: string }): Promise<RecipeIngredient> {
+  return apiFetch('/recipe-ingredients', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function fetchRecipeForMenuItem(menuItemId: string): Promise<RecipeIngredient[]> {
+  return apiFetch(`/recipe-ingredients/menu-item/${menuItemId}`);
+}
+
+export function removeRecipeIngredient(id: string): Promise<void> {
+  return apiFetch(`/recipe-ingredients/${id}`, { method: 'DELETE' });
 }

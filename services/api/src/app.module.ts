@@ -19,6 +19,8 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { PurchasingModule } from './modules/purchasing/purchasing.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -44,6 +46,8 @@ import { PurchasingModule } from './modules/purchasing/purchasing.module';
     PayrollModule,
     ExpensesModule,
     PurchasingModule,
+    InventoryModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
 })

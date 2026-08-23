@@ -175,6 +175,13 @@ export class OrdersService {
     return saved;
   }
 
+  // Used by the Inventory module's deduction listener, which only gets
+  // orderItemId off the ORDER_ITEM_STATUS_UPDATED event and needs the
+  // item's menuItemId/variant/quantity to look up its recipe.
+  findOrderItem(orderItemId: string): Promise<OrderItem | null> {
+    return this.orderItems.findOne({ where: { id: orderItemId } });
+  }
+
   private async maybeMarkOrderReady(orderId: string): Promise<void> {
     const order = await this.getOrderOrThrow(orderId);
     if (order.status !== OrderStatus.IN_KITCHEN) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchAccountingSummary } from '../api/endpoints';
+import { fetchAccountingSummary, fetchCogs } from '../api/endpoints';
 import { StatTile } from '../components/StatTile';
 import { BarChart, type BarDatum } from '../components/BarChart';
 import { LoadingScreen } from '../components/LoadingScreen';
@@ -38,12 +38,14 @@ function defaultRange() {
 export function ReportsPage({ branches, selectedBranchId }: { branches: Branch[]; selectedBranchId: string }) {
   const [{ from, to }, setRange] = useState(defaultRange());
   const [totalsByBranch, setTotalsByBranch] = useState<Record<string, Record<string, number>> | null>(null);
+  const [cogs, setCogs] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const targetBranches = selectedBranchId ? branches.filter((b) => b.id === selectedBranchId) : branches;
 
   useEffect(() => {
     setTotalsByBranch(null);
+    setCogs(null);
     setError(null);
     Promise.all(targetBranches.map((b) => fetchAccountingSummary(b.id, from, `${to}T23:59:59`)))
       .then((summaries) => {
@@ -52,11 +54,14 @@ export function ReportsPage({ branches, selectedBranchId }: { branches: Branch[]
         setTotalsByBranch(map);
       })
       .catch(() => setError('Couldn’t load the report.'));
+    Promise.all(targetBranches.map((b) => fetchCogs(b.id, from, `${to}T23:59:59`)))
+      .then((results) => setCogs(results.reduce((sum, r) => sum + r.amount, 0)))
+      .catch(() => setCogs(0)); // COGS is a bonus figure - don't fail the whole report if it can't load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranchId, from, to, branches.length]);
 
   if (error) return <div className="p-8 text-error">{error}</div>;
-  if (!totalsByBranch) return <LoadingScreen label="Loading report…" />;
+  if (!totalsByBranch || cogs === null) return <LoadingScreen label="Loading report…" />;
 
   // Combined totals across whichever branch(es) are in scope.
   const combined: Record<string, number> = {};
@@ -84,19 +89,13 @@ export function ReportsPage({ branches, selectedBranchId }: { branches: Branch[]
       ? targetBranches.map((b) => ({ label: b.name, value: totalsByBranch[b.id]?.sale ?? 0, color: '#2a78d6' }))
       : [];
 
-  // Gross Revenue − Discounts − Refunds − COGS(*) − Expenses − Payroll −
-  // Supplier Payments ± Cash Variance = Net Profit. (*) COGS is 0 until the
-  // Inventory module (a later phase) exists to compute it from recipe deductions.
+  // Net Sales = Sales + Tips − Discounts − Refunds.
+  // Gross Profit = Net Sales − COGS (from the Inventory module's recipe deductions).
+  // Net Profit = Gross Profit − Expenses − Payroll − Supplier Payments ± Cash Variance.
   const cashVariance = combined.cash_drawer_variance ?? 0;
-  const netProfit =
-    (combined.sale ?? 0) +
-    (combined.tip ?? 0) -
-    (combined.discount ?? 0) -
-    (combined.refund ?? 0) -
-    (combined.expense ?? 0) -
-    (combined.payroll_payout ?? 0) -
-    (combined.supplier_payment ?? 0) +
-    cashVariance;
+  const netSales = (combined.sale ?? 0) + (combined.tip ?? 0) - (combined.discount ?? 0) - (combined.refund ?? 0);
+  const grossProfit = netSales - cogs;
+  const netProfit = grossProfit - (combined.expense ?? 0) - (combined.payroll_payout ?? 0) - (combined.supplier_payment ?? 0) + cashVariance;
 
   return (
     <div className="p-8">
@@ -113,6 +112,8 @@ export function ReportsPage({ branches, selectedBranchId }: { branches: Branch[]
 
       <div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
         <StatTile label="Net profit" value={formatMoney(netProfit)} />
+        <StatTile label="Gross profit" value={formatMoney(grossProfit)} />
+        <StatTile label="COGS" value={formatMoney(cogs)} />
         <StatTile label="Total sales" value={formatMoney(combined.sale ?? 0)} />
         {presentRevenueTypes
           .filter((t) => t !== 'sale')

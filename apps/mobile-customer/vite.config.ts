@@ -7,6 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Hand-written service worker (src/sw.ts) for a `push` event handler -
+      // see the Table PWA's identical setup for the full rationale.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['icon.svg'],
       manifest: {
         name: 'Order Delivery & Pickup',
@@ -21,8 +26,8 @@ export default defineConfig({
           { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
         ],
       },
-      workbox: {
-        navigateFallbackDenylist: [/^\/(orders|menu|branches|restaurants)\//],
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg}'],
       },
     }),
   ],
