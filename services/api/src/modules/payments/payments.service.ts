@@ -3,9 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Payment } from './entities/payment.entity';
 import { PaymentAllocation } from './entities/payment-allocation.entity';
+import { PaymentRefund } from './entities/payment-refund.entity';
 import { CashDrawerSession } from './entities/cash-drawer-session.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { SplitByGuestDto, SplitEvenDto } from './dto/split-checkout.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { OpenCashDrawerDto } from './dto/open-cash-drawer.dto';
 import { CloseCashDrawerDto } from './dto/close-cash-drawer.dto';
 import { PaymentStatus, PaymentMethod, LedgerEntryType, CashDrawerSessionStatus } from '../../common/enums/payment.enum';
@@ -24,6 +26,8 @@ export class PaymentsService {
     private readonly payments: Repository<Payment>,
     @InjectRepository(PaymentAllocation)
     private readonly paymentAllocations: Repository<PaymentAllocation>,
+    @InjectRepository(PaymentRefund)
+    private readonly paymentRefunds: Repository<PaymentRefund>,
     @InjectRepository(CashDrawerSession)
     private readonly cashDrawerSessions: Repository<CashDrawerSession>,
     private readonly ordersService: OrdersService,
@@ -171,6 +175,54 @@ export class PaymentsService {
     return this.payments.find({ where: { orderId } });
   }
 
+  // --- Refunds ---
+  // A refund is issued against an already-captured Payment, not the Order
+  // itself - the order's own lifecycle (CLOSED) is untouched, consistent
+  // with the ledger's "a correction is a new entry, never an edit to
+  // history" philosophy (§10) applied one level down.
+
+  async refund(paymentId: string, dto: RefundPaymentDto, staffId: string): Promise<PaymentRefund> {
+    const payment = await this.payments.findOne({ where: { id: paymentId } });
+    if (!payment) throw new NotFoundException(`Payment ${paymentId} not found`);
+
+    const amount = Number(dto.amount);
+    if (amount <= 0) throw new BadRequestException('Refund amount must be positive');
+
+    const alreadyRefunded = await this.totalRefunded(paymentId);
+    const captured = Number(payment.amount) + Number(payment.tipAmount);
+    const refundable = captured - alreadyRefunded;
+    // A small epsilon guards against decimal rounding noise (e.g. a split
+    // payment's amount was itself rounded) rejecting a legitimate
+    // "refund everything remaining" request.
+    if (amount > refundable + 0.01) {
+      throw new BadRequestException(`Cannot refund more than ${refundable.toFixed(2)} remaining on this payment`);
+    }
+
+    const refund = await this.paymentRefunds.save(
+      this.paymentRefunds.create({ paymentId, amount: dto.amount, reason: dto.reason ?? null, staffId }),
+    );
+
+    if (alreadyRefunded + amount >= captured - 0.01) {
+      payment.status = PaymentStatus.REFUNDED;
+      await this.payments.save(payment);
+    }
+
+    await this.accountingService.record(payment.branchId, payment.orderId, [
+      { type: LedgerEntryType.REFUND, amount: dto.amount, note: `payment:${payment.id}${dto.reason ? ` · ${dto.reason}` : ''}` },
+    ]);
+
+    return refund;
+  }
+
+  findRefundsForPayment(paymentId: string): Promise<PaymentRefund[]> {
+    return this.paymentRefunds.find({ where: { paymentId }, relations: ['staff'], order: { createdAt: 'DESC' } });
+  }
+
+  private async totalRefunded(paymentId: string): Promise<number> {
+    const refunds = await this.paymentRefunds.find({ where: { paymentId } });
+    return refunds.reduce((sum, r) => sum + Number(r.amount), 0);
+  }
+
   // --- Cash drawer reconciliation ---
 
   async openCashDrawer(dto: OpenCashDrawerDto, cashierStaffId: string): Promise<CashDrawerSession> {
@@ -190,9 +242,9 @@ export class PaymentsService {
   }
 
   // Expected cash = opening float + every cash payment (sale + tip) taken
-  // during the session. No refund flow exists yet in this system, so
-  // there's nothing to subtract for refunds today - see the plan's "not
-  // yet implemented" list.
+  // during the session, minus every cash refund *this cashier issued*
+  // during the session (a card refund never touches the physical drawer,
+  // so only refunds against CASH payments count here - see refund()).
   async closeCashDrawer(id: string, dto: CloseCashDrawerDto): Promise<CashDrawerSession> {
     const session = await this.cashDrawerSessions.findOne({ where: { id } });
     if (!session) throw new NotFoundException(`Cash drawer session ${id} not found`);
@@ -205,7 +257,17 @@ export class PaymentsService {
       where: { cashierStaffId: session.cashierStaffId, method: PaymentMethod.CASH, createdAt: Between(session.openedAt, closedAt) },
     });
     const cashTaken = cashPayments.reduce((sum, p) => sum + Number(p.amount) + Number(p.tipAmount), 0);
-    const expectedClosingCash = Number(session.openingFloat) + cashTaken;
+
+    const cashRefunds = await this.paymentRefunds
+      .createQueryBuilder('refund')
+      .innerJoin('refund.payment', 'payment')
+      .where('refund.staffId = :staffId', { staffId: session.cashierStaffId })
+      .andWhere('payment.method = :method', { method: PaymentMethod.CASH })
+      .andWhere('refund.createdAt BETWEEN :openedAt AND :closedAt', { openedAt: session.openedAt, closedAt })
+      .getMany();
+    const cashRefunded = cashRefunds.reduce((sum, r) => sum + Number(r.amount), 0);
+
+    const expectedClosingCash = Number(session.openingFloat) + cashTaken - cashRefunded;
     const variance = Number(dto.countedClosingCash) - expectedClosingCash;
 
     session.closedAt = closedAt;

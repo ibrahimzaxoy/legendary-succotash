@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@ne
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { SplitByGuestDto, SplitEvenDto } from './dto/split-checkout.dto';
+import { RefundPaymentDto } from './dto/refund-payment.dto';
 import { OpenCashDrawerDto } from './dto/open-cash-drawer.dto';
 import { CloseCashDrawerDto } from './dto/close-cash-drawer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -27,6 +28,21 @@ export class PaymentsController {
   @Get('order/:orderId')
   findForOrder(@Param('orderId') orderId: string) {
     return this.paymentsService.findAllForOrder(orderId);
+  }
+
+  // Same cashier-or-above gate as capture() - a refund moves real money the
+  // same way a payment does.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.CASHIER, Role.MANAGER, Role.ADMIN, Role.OWNER)
+  @Post(':id/refund')
+  refund(@Param('id') id: string, @Body() dto: RefundPaymentDto, @CurrentUser() user: AuthenticatedStaff) {
+    return this.paymentsService.refund(id, dto, user.staffId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/refunds')
+  findRefunds(@Param('id') id: string) {
+    return this.paymentsService.findRefundsForPayment(id);
   }
 
   // Split checkout - see IMPLEMENTATION_PLAN.md §18. Same cashier-only gate

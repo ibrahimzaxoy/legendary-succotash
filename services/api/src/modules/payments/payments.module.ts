@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Payment } from './entities/payment.entity';
 import { PaymentAllocation } from './entities/payment-allocation.entity';
+import { PaymentRefund } from './entities/payment-refund.entity';
 import { CashDrawerSession } from './entities/cash-drawer-session.entity';
 import { PaymentsService } from './payments.service';
 import { PaymentsController } from './payments.controller';
@@ -12,7 +13,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Payment, PaymentAllocation, CashDrawerSession]),
+    TypeOrmModule.forFeature([Payment, PaymentAllocation, PaymentRefund, CashDrawerSession]),
     OrdersModule,
     AccountingModule,
     PrintingModule,

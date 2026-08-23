@@ -18,7 +18,10 @@ import type {
   MenuCategory,
   MenuItem,
   Order,
+  OrderStatus,
   PayRate,
+  Payment,
+  PaymentRefund,
   PayrollAdvance,
   PayrollLine,
   PayrollRun,
@@ -181,6 +184,22 @@ export function setItemAvailability(id: string, isAvailable: boolean): Promise<M
 // --- Orders / Dispatch ---
 export function fetchActiveOrders(branchId: string): Promise<Order[]> {
   return apiFetch(`/orders/active?branchId=${branchId}`);
+}
+
+export function fetchOrders(branchId: string, status?: OrderStatus): Promise<Order[]> {
+  return apiFetch(`/orders?branchId=${branchId}${status ? `&status=${status}` : ''}`);
+}
+
+export function fetchPaymentsForOrder(orderId: string): Promise<Payment[]> {
+  return apiFetch(`/payments/order/${orderId}`);
+}
+
+export function fetchRefundsForPayment(paymentId: string): Promise<PaymentRefund[]> {
+  return apiFetch(`/payments/${paymentId}/refunds`);
+}
+
+export function refundPayment(paymentId: string, amount: string, reason?: string): Promise<PaymentRefund> {
+  return apiFetch(`/payments/${paymentId}/refund`, { method: 'POST', body: JSON.stringify({ amount, reason }) });
 }
 
 export function createDelivery(input: { orderId: string; branchId: string; address: string }): Promise<Delivery> {

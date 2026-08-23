@@ -132,12 +132,40 @@ export interface Order {
   channel: OrderChannel;
   status: OrderStatus;
   subtotal: string;
+  discount: string;
   total: string;
   customerName: string | null;
+  customerPhone: string | null;
   deliveryAddress: string | null;
   tableId: string | null;
   table: RestaurantTable | null;
   items: OrderItem[];
+  createdAt: string;
+}
+
+// --- Payments & refunds ---
+
+export type PaymentStatus = 'pending' | 'captured' | 'failed' | 'refunded';
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  branchId: string;
+  cashierStaffId: string | null;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  amount: string;
+  tipAmount: string;
+  createdAt: string;
+}
+
+export interface PaymentRefund {
+  id: string;
+  paymentId: string;
+  amount: string;
+  reason: string | null;
+  staffId: string | null;
+  staff: Staff | null;
   createdAt: string;
 }
 

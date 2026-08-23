@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { assignDriver, createDelivery, fetchActiveOrders, fetchDeliveriesForBranch, fetchStaff } from '../api/endpoints';
+import { assignDriver, createDelivery, fetchActiveOrders, fetchDeliveriesForBranch, fetchOrders, fetchStaff } from '../api/endpoints';
 import { ApiError } from '../api/client';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { RefundModal } from '../components/RefundModal';
 import type { Delivery, Order, Staff } from '../api/types';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -24,6 +25,8 @@ export function OrdersPage({ branchId }: { branchId: string }) {
   const [riders, setRiders] = useState<Staff[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null); // orderId currently showing the rider picker
+  const [closedOrders, setClosedOrders] = useState<Order[] | null>(null);
+  const [refundOrder, setRefundOrder] = useState<Order | null>(null); // order currently showing the refund modal
 
   const load = () => {
     fetchActiveOrders(branchId).then(setOrders);
@@ -31,11 +34,22 @@ export function OrdersPage({ branchId }: { branchId: string }) {
     fetchStaff(branchId).then((all) => setRiders(all.filter((s) => s.role === 'rider' && s.active && s.onShift)));
   };
 
+  // Closed orders load once (not on the 15s live-orders poll) - a cashier
+  // looking to issue a refund is checking a specific recent order, not
+  // watching this list update in real time.
+  const loadClosed = () => fetchOrders(branchId, 'closed').then((all) => setClosedOrders(all.slice(0, 20)));
+
   useEffect(() => {
     setOrders(null);
     load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId]);
+
+  useEffect(() => {
+    setClosedOrders(null);
+    loadClosed();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId]);
 
@@ -139,6 +153,58 @@ export function OrdersPage({ branchId }: { branchId: string }) {
           </tbody>
         </table>
       </div>
+
+      <h2 className="mb-3 mt-8 font-heading text-lg font-semibold">Recently closed</h2>
+      {!closedOrders ? (
+        <p className="text-sm text-muted">Loading…</p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-surface text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3">Source</th>
+                <th className="px-4 py-3">Total</th>
+                <th className="px-4 py-3">Closed</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {closedOrders.map((order) => (
+                <tr key={order.id} className="border-t border-border">
+                  <td className="px-4 py-3 font-medium">
+                    {channelLabel(order)}
+                    {order.customerName && <span className="ml-1 text-muted">· {order.customerName}</span>}
+                  </td>
+                  <td className="px-4 py-3">${Number(order.total).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-muted">{new Date(order.createdAt).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => setRefundOrder(order)} className="text-sm font-medium text-primary">
+                      Payments &amp; refunds
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {closedOrders.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-muted">
+                    No closed orders yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {refundOrder && (
+        <RefundModal
+          order={refundOrder}
+          onClose={() => {
+            setRefundOrder(null);
+            loadClosed();
+          }}
+        />
+      )}
     </div>
   );
 }
