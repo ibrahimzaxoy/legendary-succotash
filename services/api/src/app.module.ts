@@ -15,6 +15,10 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
+import { ExpensesModule } from './modules/expenses/expenses.module';
+import { PurchasingModule } from './modules/purchasing/purchasing.module';
 
 @Module({
   imports: [
@@ -36,6 +40,10 @@ import { AccountingModule } from './modules/accounting/accounting.module';
     PaymentsModule,
     DeliveriesModule,
     AccountingModule,
+    AttendanceModule,
+    PayrollModule,
+    ExpensesModule,
+    PurchasingModule,
   ],
   controllers: [AppController],
 })

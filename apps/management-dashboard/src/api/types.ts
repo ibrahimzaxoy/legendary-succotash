@@ -158,3 +158,221 @@ export interface AccountingSummary {
   to: string;
   totals: Record<string, number>;
 }
+
+// --- Attendance ---
+
+export interface ShiftTemplate {
+  id: string;
+  branchId: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  daysOfWeek: number[];
+  active: boolean;
+}
+
+export type ShiftAssignmentStatus = 'scheduled' | 'swapped' | 'cancelled';
+
+export interface ShiftAssignment {
+  id: string;
+  branchId: string;
+  staffId: string;
+  staff: Staff;
+  shiftTemplateId: string;
+  shiftTemplate: ShiftTemplate;
+  date: string;
+  status: ShiftAssignmentStatus;
+}
+
+export type AttendanceStatus = 'present' | 'late' | 'early_leave' | 'unscheduled' | 'absent';
+
+export interface AttendanceRecord {
+  id: string;
+  branchId: string;
+  staffId: string;
+  staff: Staff;
+  shiftAssignmentId: string | null;
+  clockInAt: string;
+  clockOutAt: string | null;
+  totalMinutesWorked: number | null;
+  status: AttendanceStatus;
+}
+
+// --- Payroll ---
+
+export type PayType = 'hourly' | 'monthly';
+
+export interface PayRate {
+  id: string;
+  staffId: string;
+  payType: PayType;
+  baseRate: string;
+  overtimeMultiplier: string;
+  effectiveFrom: string;
+}
+
+export type PayrollAdvanceStatus = 'active' | 'settled';
+
+export interface PayrollAdvance {
+  id: string;
+  staffId: string;
+  branchId: string;
+  amount: string;
+  reason: string | null;
+  remainingBalance: string;
+  status: PayrollAdvanceStatus;
+  issuedAt: string;
+}
+
+export type PayrollRunStatus = 'draft' | 'finalized' | 'paid';
+
+export interface PayrollRun {
+  id: string;
+  branchId: string;
+  periodStart: string;
+  periodEnd: string;
+  status: PayrollRunStatus;
+  generatedAt: string;
+  paidAt: string | null;
+}
+
+export type PayrollAdjustmentType = 'bonus' | 'deduction';
+
+export interface PayrollAdjustment {
+  id: string;
+  payrollLineId: string;
+  type: PayrollAdjustmentType;
+  amount: string;
+  note: string | null;
+}
+
+export interface PayrollLine {
+  id: string;
+  payrollRunId: string;
+  staffId: string;
+  staff: Staff;
+  hoursWorked: string;
+  overtimeHours: string;
+  basePayAmount: string;
+  overtimeAmount: string;
+  bonusAmount: string;
+  deductionAmount: string;
+  advanceDeductionAmount: string;
+  netPay: string;
+  adjustments: PayrollAdjustment[];
+}
+
+// --- Expenses ---
+
+export interface ExpenseCategory {
+  id: string;
+  restaurantId: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface Expense {
+  id: string;
+  branchId: string;
+  categoryId: string;
+  category: ExpenseCategory;
+  amount: string;
+  description: string;
+  receiptNote: string | null;
+  loggedByStaffId: string;
+  loggedBy: Staff;
+  spentAt: string;
+}
+
+// --- Purchasing ---
+
+export interface Supplier {
+  id: string;
+  restaurantId: string;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  paymentTermsDays: number;
+  active: boolean;
+}
+
+export interface SupplierBalance {
+  owed: number;
+  paid: number;
+  balance: number;
+}
+
+export type PurchaseOrderStatus = 'draft' | 'ordered' | 'partially_received' | 'received' | 'cancelled';
+
+export interface PurchaseOrderItem {
+  id: string;
+  purchaseOrderId: string;
+  itemName: string;
+  unit: string | null;
+  quantityOrdered: string;
+  quantityReceived: string;
+  unitCost: string;
+  lineTotal: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  branchId: string;
+  supplierId: string;
+  supplier: Supplier;
+  status: PurchaseOrderStatus;
+  orderedAt: string | null;
+  expectedAt: string | null;
+  notes: string | null;
+  items: PurchaseOrderItem[];
+  createdAt: string;
+}
+
+export interface PurchaseOrderReceiptLine {
+  id: string;
+  purchaseOrderItemId: string;
+  quantityReceived: string;
+}
+
+export interface PurchaseOrderReceipt {
+  id: string;
+  purchaseOrderId: string;
+  receivedByStaffId: string | null;
+  note: string | null;
+  lines: PurchaseOrderReceiptLine[];
+  receivedAt: string;
+}
+
+export type PaymentMethod = 'cash' | 'card' | 'online' | 'wallet';
+
+export interface SupplierPayment {
+  id: string;
+  branchId: string;
+  supplierId: string;
+  purchaseOrderId: string | null;
+  amount: string;
+  method: PaymentMethod;
+  note: string | null;
+  paidAt: string;
+}
+
+// --- Cash drawer ---
+
+export type CashDrawerSessionStatus = 'open' | 'closed';
+
+export interface CashDrawerSession {
+  id: string;
+  branchId: string;
+  cashierStaffId: string;
+  cashier: Staff;
+  openingFloat: string;
+  openedAt: string;
+  closedAt: string | null;
+  expectedClosingCash: string | null;
+  countedClosingCash: string | null;
+  variance: string | null;
+  varianceNote: string | null;
+  status: CashDrawerSessionStatus;
+}

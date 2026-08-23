@@ -2,7 +2,7 @@ import { setSession } from '../state/store';
 import { setSelectedBranchId } from '../state/store';
 import type { Branch, Restaurant, StaffSummary } from '../api/types';
 
-export type Tab = 'reports' | 'menu' | 'tables' | 'staff' | 'orders';
+export type Tab = 'reports' | 'menu' | 'tables' | 'staff' | 'orders' | 'shifts' | 'payroll' | 'expenses' | 'suppliers' | 'cash';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'reports', label: 'Reports' },
@@ -10,6 +10,11 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'menu', label: 'Menu' },
   { id: 'tables', label: 'Tables' },
   { id: 'staff', label: 'Staff' },
+  { id: 'shifts', label: 'Shifts & Attendance' },
+  { id: 'payroll', label: 'Payroll' },
+  { id: 'expenses', label: 'Expenses' },
+  { id: 'suppliers', label: 'Suppliers' },
+  { id: 'cash', label: 'Cash Sessions' },
 ];
 
 export function Sidebar({

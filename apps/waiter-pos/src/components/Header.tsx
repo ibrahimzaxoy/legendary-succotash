@@ -7,11 +7,13 @@ export function Header({
   session,
   connected,
   onBack,
+  onMyShift,
 }: {
   branchName: string;
   session: StaffSession;
   connected?: boolean;
   onBack?: () => void;
+  onMyShift?: () => void;
 }) {
   return (
     <header className="flex items-center justify-between border-b border-border bg-surface px-5 py-3">
@@ -31,6 +33,14 @@ export function Header({
           <span className={`h-2.5 w-2.5 rounded-pill ${connected ? 'bg-success' : 'bg-error'}`} />
         )}
         <Clock />
+        {onMyShift && (
+          <button
+            onClick={onMyShift}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-ink active:bg-primary-light/40"
+          >
+            My shift
+          </button>
+        )}
         <button
           onClick={() => setStaffSession(null)}
           className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted active:bg-primary-light/40"

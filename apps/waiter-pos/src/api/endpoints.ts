@@ -1,7 +1,9 @@
 import { apiFetch } from './client';
 import type {
+  AttendanceRecord,
   AuthTokens,
   Branch,
+  CashDrawerSession,
   MenuCategory,
   MenuItem,
   OrderDto,
@@ -72,4 +74,33 @@ export function fetchOrder(orderId: string): Promise<OrderDto> {
 
 export function markServed(orderId: string): Promise<OrderDto> {
   return apiFetch(`/orders/${orderId}/serve`, { method: 'PATCH' });
+}
+
+// --- Attendance (self-service clock in/out) ---
+export function fetchMyOpenAttendance(): Promise<AttendanceRecord | null> {
+  return apiFetch('/attendance/me/open');
+}
+
+export function clockIn(): Promise<AttendanceRecord> {
+  return apiFetch('/attendance/clock-in', { method: 'POST' });
+}
+
+export function clockOut(): Promise<AttendanceRecord> {
+  return apiFetch('/attendance/clock-out', { method: 'POST' });
+}
+
+// --- Cash drawer (cashier role) ---
+export function fetchMyOpenCashDrawer(): Promise<CashDrawerSession | null> {
+  return apiFetch('/payments/cash-drawer-sessions/mine/open');
+}
+
+export function openCashDrawer(branchId: string, openingFloat: string): Promise<CashDrawerSession> {
+  return apiFetch('/payments/cash-drawer-sessions/open', { method: 'POST', body: JSON.stringify({ branchId, openingFloat }) });
+}
+
+export function closeCashDrawer(id: string, countedClosingCash: string, varianceNote?: string): Promise<CashDrawerSession> {
+  return apiFetch(`/payments/cash-drawer-sessions/${id}/close`, {
+    method: 'PATCH',
+    body: JSON.stringify({ countedClosingCash, varianceNote }),
+  });
 }

@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { OpenCashDrawerDto } from './dto/open-cash-drawer.dto';
+import { CloseCashDrawerDto } from './dto/close-cash-drawer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -24,5 +26,35 @@ export class PaymentsController {
   @Get('order/:orderId')
   findForOrder(@Param('orderId') orderId: string) {
     return this.paymentsService.findAllForOrder(orderId);
+  }
+
+  // --- Cash drawer reconciliation ---
+  // Self-service for the cashier operating the drawer, scoped off the JWT.
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.CASHIER, Role.MANAGER, Role.ADMIN, Role.OWNER)
+  @Post('cash-drawer-sessions/open')
+  openCashDrawer(@Body() dto: OpenCashDrawerDto, @CurrentUser() user: AuthenticatedStaff) {
+    return this.paymentsService.openCashDrawer(dto, user.staffId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('cash-drawer-sessions/mine/open')
+  myOpenCashDrawer(@CurrentUser() user: AuthenticatedStaff) {
+    return this.paymentsService.findOpenCashDrawerForCashier(user.staffId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.CASHIER, Role.MANAGER, Role.ADMIN, Role.OWNER)
+  @Patch('cash-drawer-sessions/:id/close')
+  closeCashDrawer(@Param('id') id: string, @Body() dto: CloseCashDrawerDto) {
+    return this.paymentsService.closeCashDrawer(id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.ADMIN, Role.OWNER)
+  @Get('cash-drawer-sessions')
+  findCashDrawerSessions(@Query('branchId') branchId: string) {
+    return this.paymentsService.findCashDrawerSessionsForBranch(branchId);
   }
 }

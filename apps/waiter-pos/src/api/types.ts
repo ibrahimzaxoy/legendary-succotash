@@ -107,6 +107,33 @@ export interface OrderItemDto {
   modifiers: OrderItemModifierDto[];
 }
 
+export type AttendanceStatus = 'present' | 'late' | 'early_leave' | 'unscheduled' | 'absent';
+
+export interface AttendanceRecord {
+  id: string;
+  staffId: string;
+  clockInAt: string;
+  clockOutAt: string | null;
+  totalMinutesWorked: number | null;
+  status: AttendanceStatus;
+}
+
+export type CashDrawerSessionStatus = 'open' | 'closed';
+
+export interface CashDrawerSession {
+  id: string;
+  branchId: string;
+  cashierStaffId: string;
+  openingFloat: string;
+  openedAt: string;
+  closedAt: string | null;
+  expectedClosingCash: string | null;
+  countedClosingCash: string | null;
+  variance: string | null;
+  varianceNote: string | null;
+  status: CashDrawerSessionStatus;
+}
+
 export interface OrderDto {
   id: string;
   branchId: string;

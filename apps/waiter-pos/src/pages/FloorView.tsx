@@ -14,11 +14,13 @@ export function FloorView({
   session,
   onSeatTable,
   onOpenOrder,
+  onMyShift,
 }: {
   device: Device;
   session: StaffSession;
   onSeatTable: (table: RestaurantTable) => void;
   onOpenOrder: (orderId: string) => void;
+  onMyShift: () => void;
 }) {
   const { tables, orderByTable, loading, error, connected, refresh } = useFloorData(device.branchId);
   const now = useNowTick();
@@ -47,7 +49,7 @@ export function FloorView({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Header branchName={device.branchName} session={session} connected={connected} />
+      <Header branchName={device.branchName} session={session} connected={connected} onMyShift={onMyShift} />
 
       {error && <div className="bg-error/15 px-5 py-2 text-center text-error">{error}</div>}
 

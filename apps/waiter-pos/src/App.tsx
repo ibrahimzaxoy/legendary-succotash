@@ -6,13 +6,15 @@ import { StaffLogin } from './pages/StaffLogin';
 import { FloorView } from './pages/FloorView';
 import { OrderBuilder } from './pages/OrderBuilder';
 import { OrderDetail } from './pages/OrderDetail';
+import { MyShiftPage } from './pages/MyShiftPage';
 import type { RestaurantTable } from './api/types';
 
 type View =
   | { name: 'floor' }
   | { name: 'seat'; table: RestaurantTable }
   | { name: 'order'; orderId: string }
-  | { name: 'add-items'; table: RestaurantTable; orderId: string };
+  | { name: 'add-items'; table: RestaurantTable; orderId: string }
+  | { name: 'my-shift' };
 
 export function App() {
   const device = useDevice();
@@ -58,12 +60,17 @@ export function App() {
     );
   }
 
+  if (view.name === 'my-shift') {
+    return <MyShiftPage device={device} session={session} onBack={() => setView({ name: 'floor' })} />;
+  }
+
   return (
     <FloorView
       device={device}
       session={session}
       onSeatTable={(table) => setView({ name: 'seat', table })}
       onOpenOrder={(orderId) => setView({ name: 'order', orderId })}
+      onMyShift={() => setView({ name: 'my-shift' })}
     />
   );
 }

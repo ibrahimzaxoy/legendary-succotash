@@ -12,6 +12,11 @@ import { OrdersPage } from './pages/OrdersPage';
 import { MenuPage } from './pages/MenuPage';
 import { TablesPage } from './pages/TablesPage';
 import { StaffPage } from './pages/StaffPage';
+import { ShiftsPage } from './pages/ShiftsPage';
+import { PayrollPage } from './pages/PayrollPage';
+import { ExpensesPage } from './pages/ExpensesPage';
+import { SuppliersPage } from './pages/SuppliersPage';
+import { CashSessionsPage } from './pages/CashSessionsPage';
 
 export function App() {
   const session = useSession();
@@ -67,6 +72,11 @@ function DashboardShell({
         {effectiveTab === 'menu' && branchId && <MenuPage branchId={branchId} />}
         {effectiveTab === 'tables' && branchId && <TablesPage branchId={branchId} />}
         {effectiveTab === 'staff' && branchId && <StaffPage restaurantId={restaurantId} branchId={branchId} />}
+        {effectiveTab === 'shifts' && branchId && <ShiftsPage branchId={branchId} />}
+        {effectiveTab === 'payroll' && branchId && <PayrollPage branchId={branchId} />}
+        {effectiveTab === 'expenses' && branchId && <ExpensesPage restaurantId={restaurantId} branchId={branchId} />}
+        {effectiveTab === 'suppliers' && branchId && <SuppliersPage restaurantId={restaurantId} branchId={branchId} />}
+        {effectiveTab === 'cash' && branchId && <CashSessionsPage branchId={branchId} />}
       </main>
     </div>
   );
