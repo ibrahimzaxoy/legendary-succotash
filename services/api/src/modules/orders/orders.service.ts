@@ -16,6 +16,7 @@ import {
   ORDER_READY,
   OrderItemCreatedEvent,
 } from '../kitchen/kitchen.events';
+import { PrintingService } from '../printing/printing.service';
 
 const ITEM_TERMINAL_STATUSES = [OrderItemStatus.READY, OrderItemStatus.SERVED, OrderItemStatus.CANCELLED];
 // An order is "on the floor" - still being cooked, served, or awaiting the
@@ -36,6 +37,7 @@ export class OrdersService {
     @InjectRepository(RestaurantTable)
     private readonly tables: Repository<RestaurantTable>,
     private readonly events: EventEmitter2,
+    private readonly printingService: PrintingService,
   ) {}
 
   async createOrder(dto: CreateOrderDto): Promise<Order> {
@@ -116,6 +118,8 @@ export class OrdersService {
         quantity: input.quantity,
         status: OrderItemStatus.QUEUED,
         notes: input.notes ?? null,
+        orderedByGuestId: input.orderedByGuestId ?? null,
+        orderedByGuestLabel: input.orderedByGuestLabel ?? null,
       });
       const savedItem = await this.orderItems.save(orderItem);
 
@@ -290,6 +294,18 @@ export class OrdersService {
     }
 
     return this.findOne(id);
+  }
+
+  // Table PWA "request the bill" action - prints an itemized pre-bill to
+  // the branch's receipt printer without touching the order/payment state
+  // machine at all (see PrintingService's fire-and-forget design).
+  async requestBill(id: string): Promise<{ requested: boolean }> {
+    const order = await this.findOne(id);
+    // Fire-and-forget, matching PaymentsService's receipt print: a slow or
+    // unreachable printer must never delay the guest's own response (see
+    // PrintingService's "printing never blocks" design).
+    void this.printingService.printPreBillForOrder(order);
+    return { requested: true };
   }
 
   // The waiter's own action once they've physically brought the food to

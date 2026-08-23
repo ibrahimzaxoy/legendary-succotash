@@ -34,3 +34,11 @@ export enum TableStatus {
   NEEDS_CLEANING = 'needs_cleaning',
   RESERVED = 'reserved',
 }
+
+// One TableSession per continuous dining occupancy - starts at the first QR
+// scan (before any item is even added), ends when the table is bussed (see
+// TablesService.setStatus closing it as a side effect of leaving OCCUPIED).
+export enum TableSessionStatus {
+  ACTIVE = 'active',
+  CLOSED = 'closed',
+}

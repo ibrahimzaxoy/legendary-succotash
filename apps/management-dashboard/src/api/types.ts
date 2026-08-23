@@ -403,3 +403,31 @@ export interface CashDrawerSession {
   varianceNote: string | null;
   status: CashDrawerSessionStatus;
 }
+
+// --- Printing ---
+
+export type PrinterConnectionType = 'network_tcp';
+export type PrintJobType = 'kitchen_ticket' | 'pre_bill' | 'receipt';
+export type PrintJobStatus = 'sent' | 'failed';
+
+export interface PrinterConfig {
+  id: string;
+  branchId: string;
+  kitchenStationId: string | null;
+  name: string;
+  connectionType: PrinterConnectionType;
+  ipAddress: string;
+  port: number;
+  paperWidthMm: number;
+  active: boolean;
+}
+
+export interface PrintJobLog {
+  id: string;
+  printerConfigId: string;
+  jobType: PrintJobType;
+  referenceId: string | null;
+  status: PrintJobStatus;
+  errorMessage: string | null;
+  createdAt: string;
+}

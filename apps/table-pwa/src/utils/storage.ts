@@ -23,3 +23,20 @@ export function loadTableSession(): TableSession | null {
     return null;
   }
 }
+
+// Anonymous per-table guest identity for the shared table-session cart (see
+// GuestSessionState) - keyed by tableId so re-scanning the same table's QR
+// on the same phone rejoins as the same guest (see TableSessionsService.join
+// on the backend), while scanning a *different* table starts a fresh identity.
+function guestDeviceTokenKey(tableId: string): string {
+  return `table-order:guest-device-token:${tableId}`;
+}
+
+export function loadOrCreateGuestDeviceToken(tableId: string): string {
+  const key = guestDeviceTokenKey(tableId);
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const token = crypto.randomUUID();
+  localStorage.setItem(key, token);
+  return token;
+}

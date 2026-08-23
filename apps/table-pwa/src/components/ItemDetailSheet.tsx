@@ -44,7 +44,7 @@ export function ItemDetailSheet({ item, onClose }: { item: MenuItem; onClose: ()
 
   const handleAdd = () => {
     if (unmetRequiredGroups.length > 0) return;
-    addLine({ menuItem: item, variant, modifiers: allModifiers, quantity, notes: notes.trim(), unitPrice });
+    addLine({ menuItem: item, variant, modifiers: allModifiers, quantity, notes: notes.trim() });
     onClose();
   };
 

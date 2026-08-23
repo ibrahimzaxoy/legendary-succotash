@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { RestaurantTable } from './entities/table.entity';
 import { CreateTableDto } from './dto/create-table.dto';
 import { TableStatus } from '../../common/enums/order.enum';
+import { TableSessionsService } from './table-sessions.service';
 
 @Injectable()
 export class TablesService {
@@ -14,6 +15,7 @@ export class TablesService {
     @InjectRepository(RestaurantTable)
     private readonly tables: Repository<RestaurantTable>,
     private readonly config: ConfigService,
+    private readonly tableSessionsService: TableSessionsService,
   ) {}
 
   create(dto: CreateTableDto): Promise<RestaurantTable> {
@@ -50,7 +52,14 @@ export class TablesService {
   async setStatus(id: string, status: TableStatus): Promise<RestaurantTable> {
     const table = await this.findOne(id);
     table.status = status;
-    return this.tables.save(table);
+    const saved = await this.tables.save(table);
+    // A table leaving OCCUPIED (bussed, reserved, freed) means its dining
+    // occupancy is over - close the shared session so the next party seated
+    // there starts a fresh one instead of rejoining stale guests/cart items.
+    if (status !== TableStatus.OCCUPIED) {
+      await this.tableSessionsService.closeActiveForTable(id);
+    }
+    return saved;
   }
 
   buildOrderUrl(table: RestaurantTable): string {

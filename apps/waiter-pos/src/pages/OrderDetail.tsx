@@ -6,9 +6,12 @@ import { Header } from '../components/Header';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { ErrorScreen } from '../components/ErrorScreen';
+import { CloseCheckModal } from '../components/CloseCheckModal';
 import { formatMoney } from '../utils/money';
 import type { OrderDto, RestaurantTable } from '../api/types';
 import type { StaffSession } from '../utils/storage';
+
+const CASHIER_ROLES = new Set(['cashier', 'manager', 'admin', 'owner']);
 
 export function OrderDetail({
   session,
@@ -24,6 +27,7 @@ export function OrderDetail({
   const [order, setOrder] = useState<OrderDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [serving, setServing] = useState(false);
+  const [showCloseCheck, setShowCloseCheck] = useState(false);
   const { itemStatusUpdates, readyPulse } = useOrderSocket(orderId);
 
   const load = () => {
@@ -95,13 +99,13 @@ export function OrderDetail({
           <span>{formatMoney(order.subtotal)}</span>
         </div>
 
-        {order.status === 'served' && (
+        {order.status === 'served' && !CASHIER_ROLES.has(session.staff.role) && (
           <p className="mt-6 text-center text-sm text-muted">Served - a cashier will close this check when the guest pays.</p>
         )}
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 flex gap-3 border-t border-border bg-surface p-4">
-        {order.table && (
+        {order.table && order.status !== 'closed' && (
           <button
             onClick={() => onAddItems(order.table!)}
             className="flex-1 rounded-pill border border-border bg-card py-3.5 font-semibold"
@@ -109,14 +113,34 @@ export function OrderDetail({
             Add items
           </button>
         )}
-        <button
-          onClick={handleServe}
-          disabled={order.status !== 'ready' || serving}
-          className="flex-1 rounded-pill bg-primary py-3.5 font-semibold text-white disabled:opacity-40"
-        >
-          {order.status === 'served' ? 'Served ✓' : serving ? 'Marking…' : 'Mark served'}
-        </button>
+        {order.status === 'served' && CASHIER_ROLES.has(session.staff.role) ? (
+          <button
+            onClick={() => setShowCloseCheck(true)}
+            className="flex-1 rounded-pill bg-primary py-3.5 font-semibold text-white"
+          >
+            Close check
+          </button>
+        ) : (
+          <button
+            onClick={handleServe}
+            disabled={order.status !== 'ready' || serving}
+            className="flex-1 rounded-pill bg-primary py-3.5 font-semibold text-white disabled:opacity-40"
+          >
+            {order.status === 'served' || order.status === 'closed' ? 'Served ✓' : serving ? 'Marking…' : 'Mark served'}
+          </button>
+        )}
       </div>
+
+      {showCloseCheck && (
+        <CloseCheckModal
+          order={order}
+          onClose={() => setShowCloseCheck(false)}
+          onClosed={() => {
+            setShowCloseCheck(false);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

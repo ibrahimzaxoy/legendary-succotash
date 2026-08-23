@@ -20,6 +20,8 @@ import type {
   PayrollLine,
   PayrollRun,
   PaymentMethod,
+  PrinterConfig,
+  PrintJobLog,
   PurchaseOrder,
   PurchaseOrderReceipt,
   RecipeIngredient,
@@ -392,4 +394,33 @@ export function fetchRecipeForMenuItem(menuItemId: string): Promise<RecipeIngred
 
 export function removeRecipeIngredient(id: string): Promise<void> {
   return apiFetch(`/recipe-ingredients/${id}`, { method: 'DELETE' });
+}
+
+// --- Printing ---
+
+export function fetchPrinters(branchId: string): Promise<PrinterConfig[]> {
+  return apiFetch(`/printer-configs?branchId=${branchId}`);
+}
+
+export function createPrinter(input: {
+  branchId: string;
+  kitchenStationId?: string;
+  name: string;
+  ipAddress: string;
+  port?: number;
+  paperWidthMm?: number;
+}): Promise<PrinterConfig> {
+  return apiFetch('/printer-configs', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function updatePrinter(id: string, input: Partial<{ name: string; ipAddress: string; port: number; kitchenStationId: string; active: boolean }>): Promise<PrinterConfig> {
+  return apiFetch(`/printer-configs/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export function deletePrinter(id: string): Promise<void> {
+  return apiFetch(`/printer-configs/${id}`, { method: 'DELETE' });
+}
+
+export function fetchPrintJobs(branchId: string): Promise<PrintJobLog[]> {
+  return apiFetch(`/printer-configs/jobs?branchId=${branchId}`);
 }

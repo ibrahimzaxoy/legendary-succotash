@@ -8,6 +8,8 @@ import type {
   MenuItem,
   OrderDto,
   OrderItemInput,
+  PaymentDto,
+  PaymentMethod,
   RestaurantTable,
   StaffLoginOption,
   TableStatus,
@@ -74,6 +76,20 @@ export function fetchOrder(orderId: string): Promise<OrderDto> {
 
 export function markServed(orderId: string): Promise<OrderDto> {
   return apiFetch(`/orders/${orderId}/serve`, { method: 'PATCH' });
+}
+
+// --- Payments / close check ---
+
+export function capturePayment(input: { orderId: string; method: PaymentMethod; amount: string; tipAmount?: string }): Promise<PaymentDto> {
+  return apiFetch('/payments', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function captureSplitEven(input: { orderId: string; parts: number; method: PaymentMethod }): Promise<PaymentDto[]> {
+  return apiFetch('/payments/split-even', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function captureSplitByGuest(input: { orderId: string; method: PaymentMethod }): Promise<PaymentDto[]> {
+  return apiFetch('/payments/split-by-guest', { method: 'POST', body: JSON.stringify(input) });
 }
 
 // --- Attendance (self-service clock in/out) ---

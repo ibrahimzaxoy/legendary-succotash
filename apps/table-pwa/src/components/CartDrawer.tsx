@@ -11,7 +11,7 @@ export function CartDrawer({
   onSubmit: () => Promise<void>;
   submitLabel: string;
 }) {
-  const { lines, updateQuantity, removeLine, subtotal } = useCart();
+  const { lines, guests, updateQuantity, removeLine, subtotal } = useCart();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,45 +34,50 @@ export function CartDrawer({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mt-4 h-1 w-10 rounded-pill bg-border" />
-        <h2 className="px-5 pt-3 font-heading text-xl font-semibold">Your order</h2>
+        <h2 className="px-5 pt-3 font-heading text-xl font-semibold">Your table's order</h2>
+        {guests.length > 1 && (
+          <p className="px-5 pb-1 text-sm text-muted">{guests.length} guests ordering together - everyone sees this cart live.</p>
+        )}
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
-          {lines.length === 0 && <p className="py-8 text-center text-muted">Your cart is empty.</p>}
+          {lines.length === 0 && <p className="py-8 text-center text-muted">The cart is empty.</p>}
           {lines.map((line) => (
             <div key={line.lineId} className="flex items-start justify-between gap-3 border-b border-border py-3">
               <div className="min-w-0">
-                <p className="font-medium">
-                  {line.menuItem.name}
-                  {line.variant && <span className="text-muted"> ({line.variant.name})</span>}
-                </p>
-                {line.modifiers.length > 0 && (
-                  <p className="text-sm text-muted">{line.modifiers.map((m) => m.name).join(', ')}</p>
+                <p className="font-medium">{line.nameSnapshot}</p>
+                {line.modifierNamesSnapshot.length > 0 && (
+                  <p className="text-sm text-muted">{line.modifierNamesSnapshot.join(', ')}</p>
                 )}
                 {line.notes && <p className="text-sm italic text-muted">“{line.notes}”</p>}
-                <div className="mt-1.5 flex items-center gap-2">
-                  <div className="flex items-center rounded-pill border border-border">
-                    <button
-                      onClick={() => updateQuantity(line.lineId, line.quantity - 1)}
-                      className="px-2.5 py-1 text-base"
-                      aria-label="Decrease quantity"
-                    >
-                      −
-                    </button>
-                    <span className="min-w-5 text-center text-sm font-medium">{line.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(line.lineId, line.quantity + 1)}
-                      className="px-2.5 py-1 text-base"
-                      aria-label="Increase quantity"
-                    >
-                      +
+                {!line.isMine && <p className="text-xs text-muted">Added by {line.guestLabel}</p>}
+                {line.isMine ? (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <div className="flex items-center rounded-pill border border-border">
+                      <button
+                        onClick={() => updateQuantity(line.lineId, line.quantity - 1)}
+                        className="px-2.5 py-1 text-base"
+                        aria-label="Decrease quantity"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-5 text-center text-sm font-medium">{line.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(line.lineId, line.quantity + 1)}
+                        className="px-2.5 py-1 text-base"
+                        aria-label="Increase quantity"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <button onClick={() => removeLine(line.lineId)} className="text-sm text-error">
+                      Remove
                     </button>
                   </div>
-                  <button onClick={() => removeLine(line.lineId)} className="text-sm text-error">
-                    Remove
-                  </button>
-                </div>
+                ) : (
+                  <p className="mt-1.5 text-sm text-muted">Qty {line.quantity}</p>
+                )}
               </div>
-              <p className="shrink-0 font-medium">{formatMoney(line.unitPrice * line.quantity)}</p>
+              <p className="shrink-0 font-medium">{formatMoney(Number(line.unitPriceSnapshot) * line.quantity)}</p>
             </div>
           ))}
         </div>

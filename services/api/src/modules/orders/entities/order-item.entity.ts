@@ -62,6 +62,18 @@ export class OrderItem {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  // Set only for items that came in through a shared table-session cart
+  // (see TableSessionsService.submit) - which guest at the table added this
+  // item, so a split checkout can group items by guest. No FK: TableSessionGuest
+  // lives in a different module and may outlive or predate this row either way.
+  @Column({ type: 'varchar', nullable: true })
+  orderedByGuestId: string | null;
+
+  // Snapshot label ("Guest 2") so a receipt/split-checkout view never needs
+  // a live join back to the (possibly long-closed) table session.
+  @Column({ type: 'varchar', nullable: true })
+  orderedByGuestLabel: string | null;
+
   @OneToMany(() => OrderItemModifier, (modifier) => modifier.orderItem, { cascade: true })
   modifiers: OrderItemModifier[];
 

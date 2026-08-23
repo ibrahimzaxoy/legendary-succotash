@@ -104,3 +104,33 @@ export interface OrderItemInput {
   quantity: number;
   notes?: string;
 }
+
+// --- Shared table session (multi-guest QR ordering) ---
+// Deliberately named distinctly from the device-local `TableSession` in
+// utils/storage.ts (which is just this phone's remembered QR scan) - a
+// GuestSession is the server-side, multi-phone-shared dining occupancy.
+
+export interface Guest {
+  id: string;
+  guestLabel: string;
+}
+
+export interface SharedCartItem {
+  id: string;
+  guestId: string;
+  menuItemId: string;
+  menuItemVariantId: string | null;
+  modifierOptionIds: string[] | null;
+  nameSnapshot: string;
+  unitPriceSnapshot: string;
+  modifierNamesSnapshot: string[] | null;
+  quantity: number;
+  notes: string | null;
+}
+
+export interface GuestSessionState {
+  session: { id: string; tableId: string; status: 'active' | 'closed' };
+  guest: Guest;
+  guests: Guest[];
+  cartItems: SharedCartItem[];
+}

@@ -18,6 +18,7 @@ import { ExpensesPage } from './pages/ExpensesPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { CashSessionsPage } from './pages/CashSessionsPage';
 import { InventoryPage } from './pages/InventoryPage';
+import { PrintersPage } from './pages/PrintersPage';
 
 export function App() {
   const session = useSession();
@@ -79,6 +80,7 @@ function DashboardShell({
         {effectiveTab === 'suppliers' && branchId && <SuppliersPage restaurantId={restaurantId} branchId={branchId} />}
         {effectiveTab === 'cash' && branchId && <CashSessionsPage branchId={branchId} />}
         {effectiveTab === 'inventory' && branchId && <InventoryPage branchId={branchId} />}
+        {effectiveTab === 'printers' && branchId && <PrintersPage branchId={branchId} />}
       </main>
     </div>
   );

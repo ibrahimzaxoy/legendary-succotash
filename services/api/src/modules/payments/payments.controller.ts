@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { SplitByGuestDto, SplitEvenDto } from './dto/split-checkout.dto';
 import { OpenCashDrawerDto } from './dto/open-cash-drawer.dto';
 import { CloseCashDrawerDto } from './dto/close-cash-drawer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -26,6 +27,23 @@ export class PaymentsController {
   @Get('order/:orderId')
   findForOrder(@Param('orderId') orderId: string) {
     return this.paymentsService.findAllForOrder(orderId);
+  }
+
+  // Split checkout - see IMPLEMENTATION_PLAN.md §18. Same cashier-only gate
+  // as the single-payer capture() above: a dine-in check is still always
+  // closed by a Cashier, split or not.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.CASHIER, Role.MANAGER, Role.ADMIN, Role.OWNER)
+  @Post('split-even')
+  captureSplitEven(@Body() dto: SplitEvenDto, @CurrentUser() user: AuthenticatedStaff) {
+    return this.paymentsService.captureSplitEven(dto, user.staffId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.CASHIER, Role.MANAGER, Role.ADMIN, Role.OWNER)
+  @Post('split-by-guest')
+  captureSplitByGuest(@Body() dto: SplitByGuestDto, @CurrentUser() user: AuthenticatedStaff) {
+    return this.paymentsService.captureSplitByGuest(dto, user.staffId);
   }
 
   // --- Cash drawer reconciliation ---

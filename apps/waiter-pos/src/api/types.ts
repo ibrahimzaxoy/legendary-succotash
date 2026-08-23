@@ -100,11 +100,24 @@ export interface OrderItemDto {
   id: string;
   orderId: string;
   nameSnapshot: string;
+  priceSnapshot: string;
   quantity: number;
   notes: string | null;
   status: OrderItemStatus;
   createdAt: string;
   modifiers: OrderItemModifierDto[];
+  orderedByGuestId: string | null;
+  orderedByGuestLabel: string | null;
+}
+
+export type PaymentMethod = 'cash' | 'card' | 'online' | 'wallet';
+
+export interface PaymentDto {
+  id: string;
+  orderId: string;
+  method: PaymentMethod;
+  amount: string;
+  tipAmount: string;
 }
 
 export type AttendanceStatus = 'present' | 'late' | 'early_leave' | 'unscheduled' | 'absent';

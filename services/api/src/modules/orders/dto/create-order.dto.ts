@@ -32,6 +32,17 @@ export class OrderItemInputDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Set only by TableSessionsService.submit() when converting a shared
+  // table-session cart into real order items - never supplied directly by
+  // a client DTO in the normal single-cart ordering flow.
+  @IsOptional()
+  @IsUUID()
+  orderedByGuestId?: string;
+
+  @IsOptional()
+  @IsString()
+  orderedByGuestLabel?: string;
 }
 
 export class CreateOrderDto {

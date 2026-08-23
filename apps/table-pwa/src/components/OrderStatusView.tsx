@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import type { Order, OrderItemStatus } from '../api/types';
 import { StatusBadge } from './StatusBadge';
 import { formatMoney } from '../utils/money';
+import { requestBill } from '../api/endpoints';
 
 const DONE_STATUSES: OrderItemStatus[] = ['ready', 'served', 'cancelled'];
 
@@ -18,6 +20,17 @@ export function OrderStatusView({
   // keep showing "ready" after a guest appends a fresh, still-queued item
   // to an order that was already ready.
   const allItemsDone = order.items.every((item) => DONE_STATUSES.includes(liveStatuses[item.id] ?? item.status));
+  const [billState, setBillState] = useState<'idle' | 'requesting' | 'requested'>('idle');
+
+  const handleRequestBill = async () => {
+    setBillState('requesting');
+    try {
+      await requestBill(order.id);
+      setBillState('requested');
+    } catch {
+      setBillState('idle');
+    }
+  };
 
   return (
     <div className="p-4 pb-28">
@@ -52,9 +65,22 @@ export function OrderStatusView({
         <span>{formatMoney(order.subtotal)}</span>
       </div>
 
-      <p className="mt-6 text-center text-sm text-muted">
-        Ready to pay? Just ask your server — they’ll bring the check to the table.
-      </p>
+      <div className="mt-6 text-center text-sm text-muted">
+        {billState === 'requested' ? (
+          <p>Bill requested - a server will bring it to the table shortly.</p>
+        ) : (
+          <>
+            <p className="mb-2">Ready to pay?</p>
+            <button
+              onClick={handleRequestBill}
+              disabled={billState === 'requesting'}
+              className="rounded-pill border border-border px-4 py-2 font-medium text-ink disabled:opacity-50"
+            >
+              {billState === 'requesting' ? 'Requesting…' : 'Request the bill'}
+            </button>
+          </>
+        )}
+      </div>
 
       <button
         onClick={onAddMore}

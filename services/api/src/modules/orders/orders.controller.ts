@@ -70,6 +70,13 @@ export class OrdersController {
     return this.ordersService.findOne(id);
   }
 
+  // Public: the Table PWA's "request the bill" action, before a cashier
+  // ever gets involved - just prints a pre-bill, no state change.
+  @Post(':id/request-bill')
+  requestBill(@Param('id') id: string) {
+    return this.ordersService.requestBill(id);
+  }
+
   // The waiter's own signal that food has physically reached the table -
   // distinct from the kitchen-driven READY status.
   @UseGuards(JwtAuthGuard, RolesGuard)

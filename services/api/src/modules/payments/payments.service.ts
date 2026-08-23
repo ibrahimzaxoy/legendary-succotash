@@ -2,23 +2,30 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { Payment } from './entities/payment.entity';
+import { PaymentAllocation } from './entities/payment-allocation.entity';
 import { CashDrawerSession } from './entities/cash-drawer-session.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { SplitByGuestDto, SplitEvenDto } from './dto/split-checkout.dto';
 import { OpenCashDrawerDto } from './dto/open-cash-drawer.dto';
 import { CloseCashDrawerDto } from './dto/close-cash-drawer.dto';
 import { PaymentStatus, PaymentMethod, LedgerEntryType, CashDrawerSessionStatus } from '../../common/enums/payment.enum';
 import { OrdersService } from '../orders/orders.service';
 import { AccountingService } from '../accounting/accounting.service';
+import { PrintingService } from '../printing/printing.service';
+import type { Order } from '../orders/entities/order.entity';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     @InjectRepository(Payment)
     private readonly payments: Repository<Payment>,
+    @InjectRepository(PaymentAllocation)
+    private readonly paymentAllocations: Repository<PaymentAllocation>,
     @InjectRepository(CashDrawerSession)
     private readonly cashDrawerSessions: Repository<CashDrawerSession>,
     private readonly ordersService: OrdersService,
     private readonly accountingService: AccountingService,
+    private readonly printingService: PrintingService,
   ) {}
 
   // For dine-in this is only ever called with a cashierStaffId, resolved
@@ -29,27 +36,103 @@ export class PaymentsService {
   // no cashierStaffId.
   async capture(dto: CreatePaymentDto, cashierStaffId: string | null): Promise<Payment> {
     const order = await this.ordersService.findOne(dto.orderId);
+    const saved = await this.recordPayment(
+      order,
+      { method: dto.method, amount: dto.amount, tipAmount: dto.tipAmount, externalReference: dto.externalReference },
+      cashierStaffId,
+    );
+    await this.ordersService.closeOrder(order.id, cashierStaffId);
+    void this.printingService.printReceiptForOrder(order, saved);
+    return saved;
+  }
 
+  // Split checkout, "split evenly": divides the total into `parts` equal
+  // Payment rows (the last part absorbs any rounding remainder so the sum
+  // always equals the order total exactly), then closes the order once.
+  async captureSplitEven(dto: SplitEvenDto, cashierStaffId: string): Promise<Payment[]> {
+    const order = await this.ordersService.findOne(dto.orderId);
+    const total = Number(order.total);
+    const amounts: number[] = [];
+    let allocated = 0;
+    for (let i = 0; i < dto.parts - 1; i++) {
+      const amt = Math.round((total / dto.parts) * 100) / 100;
+      amounts.push(amt);
+      allocated += amt;
+    }
+    amounts.push(Math.round((total - allocated) * 100) / 100);
+
+    const saved: Payment[] = [];
+    for (const amount of amounts) {
+      saved.push(await this.recordPayment(order, { method: dto.method, amount: amount.toFixed(2) }, cashierStaffId));
+    }
+    await this.ordersService.closeOrder(order.id, cashierStaffId);
+    void this.printingService.printReceiptForOrder(order, { method: dto.method, amount: order.total, tipAmount: '0' } as Payment);
+    return saved;
+  }
+
+  // Split checkout, "pay for your own items": groups the order's items by
+  // OrderItem.orderedByGuestId (set when a shared table-session cart was
+  // submitted - see TableSessionsService.submit), creates one Payment per
+  // guest for exactly what they ordered, and itemizes each with
+  // PaymentAllocation rows so it's traceable back to individual items.
+  async captureSplitByGuest(dto: SplitByGuestDto, cashierStaffId: string): Promise<Payment[]> {
+    const order = await this.ordersService.findOne(dto.orderId);
+    const groups = new Map<string, typeof order.items>();
+    for (const item of order.items) {
+      const key = item.orderedByGuestId ?? 'ungrouped';
+      const group = groups.get(key) ?? [];
+      group.push(item);
+      groups.set(key, group);
+    }
+
+    const saved: Payment[] = [];
+    for (const items of groups.values()) {
+      const itemTotals = items.map((item) => {
+        const modifiersTotal = item.modifiers.reduce((sum, m) => sum + Number(m.priceSnapshot), 0);
+        return { item, total: (Number(item.priceSnapshot) + modifiersTotal) * item.quantity };
+      });
+      const groupTotal = itemTotals.reduce((sum, t) => sum + t.total, 0);
+      const payment = await this.recordPayment(order, { method: dto.method, amount: groupTotal.toFixed(2) }, cashierStaffId);
+      saved.push(payment);
+
+      const allocations = itemTotals.map(({ item, total }) =>
+        this.paymentAllocations.create({ paymentId: payment.id, orderItemId: item.id, allocatedAmount: total.toFixed(2) }),
+      );
+      await this.paymentAllocations.save(allocations);
+    }
+
+    await this.ordersService.closeOrder(order.id, cashierStaffId);
+    void this.printingService.printReceiptForOrder(order, { method: dto.method, amount: order.total, tipAmount: '0' } as Payment);
+    return saved;
+  }
+
+  // Shared by capture()/captureSplitEven()/captureSplitByGuest() - creates
+  // the Payment row and its ledger entries but never closes the order,
+  // since a split checkout needs several of these before the order is
+  // actually done.
+  private async recordPayment(
+    order: Order,
+    input: { method: Payment['method']; amount: string; tipAmount?: string; externalReference?: string },
+    cashierStaffId: string | null,
+  ): Promise<Payment> {
     const payment = this.payments.create({
-      orderId: dto.orderId,
+      orderId: order.id,
       branchId: order.branchId,
       cashierStaffId,
-      method: dto.method,
+      method: input.method,
       status: PaymentStatus.CAPTURED,
-      amount: dto.amount,
-      tipAmount: dto.tipAmount ?? '0',
-      externalReference: dto.externalReference ?? null,
+      amount: input.amount,
+      tipAmount: input.tipAmount ?? '0',
+      externalReference: input.externalReference ?? null,
     });
     const saved = await this.payments.save(payment);
 
     await this.accountingService.record(order.branchId, order.id, [
-      { type: LedgerEntryType.SALE, amount: dto.amount, note: `payment:${saved.id}` },
-      ...(dto.tipAmount && Number(dto.tipAmount) > 0
-        ? [{ type: LedgerEntryType.TIP, amount: dto.tipAmount, note: `payment:${saved.id}` }]
+      { type: LedgerEntryType.SALE, amount: input.amount, note: `payment:${saved.id}` },
+      ...(input.tipAmount && Number(input.tipAmount) > 0
+        ? [{ type: LedgerEntryType.TIP, amount: input.tipAmount, note: `payment:${saved.id}` }]
         : []),
     ]);
-
-    await this.ordersService.closeOrder(order.id, cashierStaffId);
 
     return saved;
   }
